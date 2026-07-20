@@ -252,12 +252,24 @@
   API-fail, payment USD/EUR/override/rate-unavailable, summary, forecast).
   Проверено в Docker: USD 12.50 и UAH 500@0.025 → оба $12.50, итог /costs = 25.00.
 
-- [ ] **T16. Коннектор Namecheap + аккаунты регистраторов.**
+- [x] **T16. Коннектор Namecheap + аккаунты регистраторов.** _(2026-07-20)_
   Registrar/RegistrarAccount (credentials шифрованы, маскирование в UI/логах);
   интерфейс RegistrarConnector; Namecheap: getList с пагинацией, expiry,
   auto-renew; синк: upsert, manual не перетирается, новые домены → очередь
   «неразобранные» с UI назначения проекта; ручной и периодический запуск синка.
   Тесты: мок API, пагинация, слияние источников, ошибки авторизации.
+  _Сделано:_ модели Registrar/RegistrarAccount/UnassignedDomain (+миграция) и
+  добавлены отложенные из T04 FK domains.registrar_id/registrar_account_id;
+  `connectors/base` (RegistrarConnector) + `connectors/namecheap` (getList XML,
+  пагинация, парсинг expiry/auto-renew, Status=ERROR→ConnectorError); `services/
+  registrars` (CRUD с шифрованием creds; sync_account: merge существующих —
+  manual не перетирается + история, staging новых через ON CONFLICT; ошибка API→
+  status=error без падения; assign_to_project промоутит из очереди); web
+  /registrars и /unassigned; актор sync_registrar_account (ручной запуск) +
+  периодический enqueue в scheduler (интервал 6ч). Тесты: 144 (namecheap parse/
+  pagination/auth-error; sync merge+stage/manual-safe/auth-error/assign; creds
+  зашифрованы). Проверено в Docker: аккаунт (creds зашифрованы), синк против
+  реального Namecheap с плохим ключом → graceful error; assign создаёт домен.
 
 - [ ] **T17. Retention, метрики, полировка MVP.**
   Фоновая чистка партиций >12 мес.; Prometheus-эндпоинт (глубина очередей,

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Неразобранные домены — DomainGuard{% endblock %}
+{% block content %}
+<h1 class="mb-4 text-lg font-semibold">Неразобранные домены</h1>
+<p class="mb-4 text-sm text-gray-600">Домены, найденные синком регистратора и ещё не привязанные к проекту.</p>
+<table class="w-full border-collapse text-sm">
+  <thead>
+    <tr class="border-b text-left text-gray-600">
+      <th class="py-2">Домен</th><th class="py-2">Истекает</th><th class="py-2">Auto-renew</th><th class="py-2">Проект</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in unassigned %}
+    <tr class="border-b">
+      <td class="py-2 font-mono">{{ u.fqdn }}</td>
+      <td class="py-2">{{ u.expiry_date.strftime('%Y-%m-%d') if u.expiry_date else '—' }}</td>
+      <td class="py-2">{{ {none:'?', true:'да', false:'нет'}[u.auto_renew] }}</td>
+      <td class="py-2">
+        <form method="post" action="/unassigned/{{ u.id }}/assign" class="flex gap-2">
+          <select name="project_id" required class="rounded border px-2 py-1">
+            {% for p in projects %}<option value="{{ p.id }}">{{ p.name }} ({{ p.code }})</option>{% endfor %}
+          </select>
+          <button type="submit" class="rounded bg-gray-900 px-3 py-1 text-white hover:bg-gray-700">Назначить</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="py-4 text-gray-500">Пусто.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import redis.asyncio as aioredis
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.locks import redis_lock
@@ -43,6 +43,48 @@ def _default_send_healthcheck(healthcheck_id: int) -> None:
     from app.workers.checks import run_healthcheck
 
     run_healthcheck.send(healthcheck_id)
+
+
+def _default_send_sync(account_id: int) -> None:
+    from app.workers.checks import sync_registrar_account
+
+    sync_registrar_account.send(account_id)
+
+
+async def enqueue_due_registrar_syncs(
+    session: AsyncSession,
+    redis: aioredis.Redis,
+    *,
+    now: datetime | None = None,
+    interval_hours: int = 6,
+    send: Callable[[int], None] = _default_send_sync,
+) -> list[int]:
+    """Enqueue sync for enabled accounts not synced within ``interval_hours``."""
+    from app.models.registrar import RegistrarAccount
+
+    ts = now or datetime.now(UTC)
+    cutoff = ts - timedelta(hours=interval_hours)
+    result = await session.execute(
+        select(RegistrarAccount).where(
+            RegistrarAccount.is_enabled.is_(True),
+            or_(
+                RegistrarAccount.last_sync_at.is_(None),
+                RegistrarAccount.last_sync_at <= cutoff,
+            ),
+        )
+    )
+    dispatched: list[int] = []
+    for account in result.scalars().all():
+        lock_key = f"lock:regsync:{account.id}"
+        async with redis_lock(redis, lock_key, ttl=3600) as got:
+            if not got:
+                continue
+            send(account.id)
+            # Provisional bump so we don't re-enqueue next tick; the sync sets the real value.
+            account.last_sync_at = ts
+            dispatched.append(account.id)
+    await session.commit()
+    return dispatched
 
 
 def _next_at(now: datetime, ctype: CheckType, jitter_frac: float) -> datetime:
