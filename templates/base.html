@@ -1,55 +1,203 @@
-{# Базовый шаблон. Вёрстка держится максимально чистой: дизайн будет заменён
-   позже (Claude Design), поэтому здесь только семантическая разметка и подключение
-   HTMX + Tailwind (CDN на MVP). Тексты интерфейса — на русском. #}
+{# Base layout (T23 new UI). Stack stays fixed: Jinja2 + HTMX + Tailwind (Play
+   CDN, no build step). The whole design system lives in the Tailwind component
+   layer below, so page templates use short semantic classes (.card, .btn,
+   .badge, .input, .dg-table…). UI text is Russian; design is dark-mode aware. #}
+{% import "_components.html" as ui %}
 <!doctype html>
-<html lang="ru">
+<html lang="ru" class="h-full">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}DomainGuard{% endblock %}</title>
+    {# Apply saved theme before paint to avoid a flash. #}
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("dg-theme");
+          if (t === "dark" || (!t && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {}
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: "#eef2ff", 100: "#e0e7ff", 200: "#c7d2fe", 300: "#a5b4fc",
+                400: "#818cf8", 500: "#6366f1", 600: "#4f46e5", 700: "#4338ca",
+                800: "#3730a3", 900: "#312e81",
+              },
+            },
+            fontFamily: {
+              sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
+              mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+            },
+          },
+        },
+      };
+    </script>
     <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <style type="text/tailwindcss">
+      @layer base {
+        body { @apply bg-slate-50 text-slate-800 antialiased dark:bg-slate-950 dark:text-slate-200; }
+      }
+      @layer components {
+        /* Surfaces */
+        .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900; }
+        .card-p { @apply p-5; }
+
+        /* Typography */
+        .page-title { @apply text-xl font-semibold tracking-tight text-slate-900 dark:text-white; }
+        .page-title-count { @apply ml-1 text-base font-normal text-slate-400; }
+        .section-title { @apply mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400; }
+        .link { @apply font-medium text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400; }
+        .muted { @apply text-slate-500 dark:text-slate-400; }
+
+        /* Buttons */
+        .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50; }
+        .btn-primary { @apply bg-brand-600 text-white hover:bg-brand-700; }
+        .btn-secondary { @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700; }
+        .btn-ghost { @apply text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800; }
+        .btn-danger { @apply bg-red-600 text-white hover:bg-red-700; }
+        .btn-link-danger { @apply text-red-600 hover:text-red-700 hover:underline dark:text-red-400; }
+        .btn-sm { @apply px-2.5 py-1.5 text-xs; }
+
+        /* Form controls */
+        .label { @apply mb-1 block text-sm font-medium text-slate-600 dark:text-slate-300; }
+        .input, .select, .textarea { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-800/60; }
+        .input-mono { @apply font-mono; }
+        .checkbox { @apply h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500/40 dark:border-slate-600 dark:bg-slate-800; }
+
+        /* Badges */
+        .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
+        .badge-gray { @apply bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300; }
+        .badge-green { @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400; }
+        .badge-red { @apply bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400; }
+        .badge-amber { @apply bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400; }
+        .badge-blue { @apply bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400; }
+        .badge-indigo { @apply bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300; }
+
+        /* Flash banners */
+        .flash { @apply mb-4 rounded-lg border px-4 py-3 text-sm; }
+        .flash-error { @apply border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300; }
+        .flash-success { @apply border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300; }
+        .flash-info { @apply border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300; }
+
+        /* Tables */
+        .dg-table { @apply w-full border-collapse text-sm; }
+        .dg-table thead th { @apply border-b border-slate-200 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400; }
+        .dg-table tbody td { @apply border-b border-slate-100 px-3 py-2.5 align-middle dark:border-slate-800/70; }
+        .dg-table tbody tr { @apply hover:bg-slate-50 dark:hover:bg-slate-800/40; }
+        .th { @apply border-b border-slate-200 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400; }
+        .td { @apply border-b border-slate-100 px-3 py-2.5 dark:border-slate-800/70; }
+
+        /* Stat tiles */
+        .stat { @apply block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-brand-300 hover:bg-brand-50/40 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-700 dark:hover:bg-slate-800; }
+        .stat-value { @apply text-2xl font-semibold text-slate-900 dark:text-white; }
+        .stat-label { @apply mt-0.5 text-sm text-slate-500 dark:text-slate-400; }
+        .stat-danger .stat-value { @apply text-red-600 dark:text-red-400; }
+
+        /* Sidebar nav */
+        .nav-link { @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white; }
+        .nav-link.active { @apply bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300; }
+        .nav-section { @apply px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500; }
+      }
+    </style>
   </head>
-  <body class="min-h-screen bg-gray-50 text-gray-900">
-    <header class="border-b bg-white">
-      <nav class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <div class="flex items-center gap-4">
-          <a href="/" class="font-semibold">DomainGuard</a>
-          {% if user %}
-            <a href="/domains" class="text-sm text-gray-600 hover:text-gray-900">Домены</a>
-            <a href="/alerts" class="text-sm text-gray-600 hover:text-gray-900">Алерты</a>
-            <a href="/costs" class="text-sm text-gray-600 hover:text-gray-900">Расходы</a>
-            {% if user.role.value in ("admin", "manager") %}
-              <a href="/import" class="text-sm text-gray-600 hover:text-gray-900">Импорт</a>
-            {% endif %}
-            <a href="/companies" class="text-sm text-gray-600 hover:text-gray-900">Компании</a>
-            <a href="/projects" class="text-sm text-gray-600 hover:text-gray-900">Проекты</a>
-            <a href="/tags" class="text-sm text-gray-600 hover:text-gray-900">Теги</a>
-          {% endif %}
-          {% if user and user.role.value == "admin" %}
-            <a href="/users" class="text-sm text-gray-600 hover:text-gray-900">Пользователи</a>
-            <a href="/channels" class="text-sm text-gray-600 hover:text-gray-900">Каналы</a>
-            <a href="/registrars" class="text-sm text-gray-600 hover:text-gray-900">Регистраторы</a>
-            <a href="/settings" class="text-sm text-gray-600 hover:text-gray-900">Настройки</a>
-          {% endif %}
+  <body class="h-full">
+    {% if user %}
+      {% set path = request.url.path if request else "" %}
+      {% set nav_sections = [
+        ("", [
+          ("/", "grid", "Обзор", ["admin","manager","viewer"], true),
+          ("/domains", "globe", "Домены", ["admin","manager","viewer"], false),
+          ("/alerts", "bell", "Алерты", ["admin","manager","viewer"], false),
+          ("/costs", "cash", "Расходы", ["admin","manager","viewer"], false),
+          ("/import", "upload", "Импорт", ["admin","manager"], false),
+        ]),
+        ("Каталог", [
+          ("/companies", "building", "Компании", ["admin","manager","viewer"], false),
+          ("/projects", "folder", "Проекты", ["admin","manager","viewer"], false),
+          ("/tags", "tag", "Теги", ["admin","manager","viewer"], false),
+        ]),
+        ("Администрирование", [
+          ("/users", "users", "Пользователи", ["admin"], false),
+          ("/channels", "send", "Каналы", ["admin"], false),
+          ("/registrars", "plug", "Регистраторы", ["admin"], false),
+          ("/settings", "cog", "Настройки", ["admin"], false),
+        ]),
+        ("Личное", [
+          ("/2fa", "shield", "2FA", ["admin","manager","viewer"], false),
+          ("/tokens", "key", "API-токены", ["admin","manager","viewer"], false),
+          ("/webhooks", "webhook", "Вебхуки", ["admin"], false),
+        ]),
+      ] %}
+      <div class="flex min-h-full">
+        {# ---- Sidebar ---- #}
+        <aside id="dg-sidebar"
+               class="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white px-3 py-4 dark:border-slate-800 dark:bg-slate-900 lg:flex">
+          <a href="/" class="mb-4 flex items-center gap-2 px-2">
+            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">{{ ui.icon("shield", "h-5 w-5") }}</span>
+            <span class="text-base font-semibold tracking-tight text-slate-900 dark:text-white">DomainGuard</span>
+          </a>
+          <nav class="flex-1 space-y-0.5 overflow-y-auto">
+            {% for section_title, items in nav_sections %}
+              {% set vis = [] %}
+              {% for it in items %}{% if user.role.value in it[3] %}{% set _ = vis.append(it) %}{% endif %}{% endfor %}
+              {% if vis %}
+                {% if section_title %}<div class="nav-section">{{ section_title }}</div>{% endif %}
+                {% for href, ic, label, roles, exact in vis %}
+                  {% set active = (path == href) if exact else (path == href or path.startswith(href ~ "/")) %}
+                  <a href="{{ href }}" class="nav-link {{ 'active' if active else '' }}">{{ ui.icon(ic) }}<span>{{ label }}</span></a>
+                {% endfor %}
+              {% endif %}
+            {% endfor %}
+          </nav>
+        </aside>
+
+        {# ---- Main column ---- #}
+        <div class="flex min-w-0 flex-1 flex-col lg:pl-60">
+          <header class="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/90 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
+            <button type="button" onclick="document.getElementById('dg-sidebar').classList.toggle('hidden')"
+                    class="btn btn-ghost btn-sm lg:hidden" aria-label="Меню">{{ ui.icon("menu") }}</button>
+            <div class="flex-1"></div>
+            <button type="button" onclick="dgToggleTheme()" class="btn btn-ghost btn-sm" aria-label="Тема">
+              <span class="hidden dark:inline">{{ ui.icon("sun") }}</span>
+              <span class="inline dark:hidden">{{ ui.icon("moon") }}</span>
+            </button>
+            <div class="flex items-center gap-2">
+              <span class="hidden text-sm text-slate-600 dark:text-slate-300 sm:inline">{{ user.login }}</span>
+              {{ ui.badge(user.role.value, "indigo") }}
+              <form method="post" action="/logout">
+                <button type="submit" class="btn btn-ghost btn-sm" title="Выйти">{{ ui.icon("logout") }}</button>
+              </form>
+            </div>
+          </header>
+          <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
+            {% block content %}{% endblock %}
+          </main>
         </div>
-        {% if user %}
-          <div class="flex items-center gap-3 text-sm">
-            <a href="/2fa" class="text-gray-600 hover:text-gray-900">2FA</a>
-            <a href="/tokens" class="text-gray-600 hover:text-gray-900">API-токены</a>
-            {% if user.role.value == "admin" %}
-              <a href="/webhooks" class="text-gray-600 hover:text-gray-900">Вебхуки</a>
-            {% endif %}
-            <span class="text-gray-600">{{ user.login }} ({{ user.role.value }})</span>
-            <form method="post" action="/logout">
-              <button type="submit" class="text-gray-600 hover:text-gray-900">Выйти</button>
-            </form>
-          </div>
-        {% endif %}
-      </nav>
-    </header>
-    <main class="mx-auto max-w-6xl px-4 py-6">
-      {% block content %}{% endblock %}
-    </main>
+      </div>
+      <script>
+        function dgToggleTheme() {
+          var d = document.documentElement.classList.toggle("dark");
+          try { localStorage.setItem("dg-theme", d ? "dark" : "light"); } catch (e) {}
+        }
+      </script>
+    {% else %}
+      {# Unauthenticated shell (login): centered, no sidebar. #}
+      <div class="flex min-h-full flex-col items-center justify-center px-4 py-12">
+        <div class="mb-6 flex items-center gap-2">
+          <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white">{{ ui.icon("shield", "h-6 w-6") }}</span>
+          <span class="text-lg font-semibold tracking-tight text-slate-900 dark:text-white">DomainGuard</span>
+        </div>
+        <div class="w-full max-w-sm">{{ self.content() }}</div>
+      </div>
+    {% endif %}
   </body>
 </html>

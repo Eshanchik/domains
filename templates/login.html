@@ -1,35 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Вход — DomainGuard{% endblock %}
 {% block content %}
-<div class="mx-auto max-w-sm">
-  <h1 class="mb-4 text-lg font-semibold">Вход в DomainGuard</h1>
+<div class="card card-p">
+  <h1 class="mb-1 text-lg font-semibold text-slate-900 dark:text-white">Вход</h1>
+  <p class="mb-4 text-sm muted">Введите свои учётные данные для доступа.</p>
   {% if error %}
-    <p class="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-      {{ error }}
-    </p>
+    <div class="flash flash-error">{{ error }}</div>
   {% endif %}
-  <form method="post" action="/login" class="space-y-3">
+  <form method="post" action="/login" class="space-y-4">
     <div>
-      <label class="block text-sm text-gray-600" for="login">Логин</label>
-      <input id="login" name="login" required value="{{ login_value or '' }}"
-             class="mt-1 w-full rounded border px-3 py-2" />
+      <label class="label" for="login">Логин</label>
+      <input id="login" name="login" required value="{{ login_value or '' }}" class="input" autofocus />
     </div>
     <div>
-      <label class="block text-sm text-gray-600" for="password">Пароль</label>
-      <input id="password" name="password" type="password" required
-             class="mt-1 w-full rounded border px-3 py-2" />
+      <label class="label" for="password">Пароль</label>
+      <input id="password" name="password" type="password" required class="input" />
     </div>
     {% if need_code %}
     <div>
-      <label class="block text-sm text-gray-600" for="code">Код 2FA</label>
-      <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" autofocus
-             class="mt-1 w-full rounded border px-3 py-2 font-mono" />
+      <label class="label" for="code">Код 2FA</label>
+      <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" autofocus class="input input-mono" />
     </div>
     {% endif %}
-    <button type="submit"
-            class="w-full rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">
-      Войти
-    </button>
+    <button type="submit" class="btn btn-primary w-full">Войти</button>
   </form>
 </div>
 {% endblock %}

@@ -1,46 +1,50 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}Расходы — DomainGuard{% endblock %}
 {% block content %}
-<div class="mb-4 flex items-center justify-between">
-  <h1 class="text-lg font-semibold">Расходы за {{ year }} год (USD)</h1>
-  <form method="get" action="/costs" class="flex gap-2 text-sm">
-    <select name="group_by" class="rounded border px-2 py-1">
+{% call ui.page_header("Расходы за " ~ year ~ " год (USD)") %}
+  <form method="get" action="/costs" class="flex flex-wrap items-center gap-2 text-sm">
+    <select name="group_by" class="select w-auto">
       {% for g, label in [("company","по компаниям"), ("project","по проектам"), ("registrar","по регистраторам")] %}
         <option value="{{ g }}" {{ 'selected' if group_by==g else '' }}>{{ label }}</option>
       {% endfor %}
     </select>
-    <input name="year" type="number" value="{{ year }}" class="w-24 rounded border px-2 py-1" />
-    <button type="submit" class="rounded bg-gray-200 px-3 py-1 hover:bg-gray-300">Показать</button>
+    <input name="year" type="number" value="{{ year }}" class="input w-24" />
+    <button type="submit" class="btn btn-secondary btn-sm">Показать</button>
   </form>
+{% endcall %}
+
+<div class="card overflow-x-auto mb-6">
+  <table class="dg-table">
+    <thead><tr><th>Группа</th><th>Сумма, USD</th></tr></thead>
+    <tbody>
+      {% for row in summary %}
+      <tr><td>{{ row.label }}</td><td>{{ '%.2f'|format(row.total_usd) }}</td></tr>
+      {% else %}
+      {{ ui.empty_row(2, "Нет платежей за период.") }}
+      {% endfor %}
+    </tbody>
+    {% if summary %}
+    <tfoot><tr class="font-medium"><td>Итого</td><td>{{ '%.2f'|format(total) }}</td></tr></tfoot>
+    {% endif %}
+  </table>
 </div>
 
-<table class="mb-2 w-full border-collapse text-sm">
-  <thead><tr class="border-b text-left text-gray-600"><th class="py-2">Группа</th><th class="py-2">Сумма, USD</th></tr></thead>
-  <tbody>
-    {% for row in summary %}
-    <tr class="border-b"><td class="py-2">{{ row.label }}</td><td class="py-2">{{ '%.2f'|format(row.total_usd) }}</td></tr>
-    {% else %}
-    <tr><td colspan="2" class="py-4 text-gray-500">Нет платежей за период.</td></tr>
-    {% endfor %}
-  </tbody>
-  {% if summary %}
-  <tfoot><tr class="border-t font-medium"><td class="py-2">Итого</td><td class="py-2">{{ '%.2f'|format(total) }}</td></tr></tfoot>
-  {% endif %}
-</table>
-
-<h2 class="mb-2 mt-6 text-sm font-medium text-gray-600">Ближайшие продления (≤ 30 дней)</h2>
-<table class="w-full border-collapse text-sm">
-  <thead><tr class="border-b text-left text-gray-600"><th class="py-2">Домен</th><th class="py-2">Истекает</th><th class="py-2">Цена</th></tr></thead>
-  <tbody>
-    {% for item in forecast %}
-    <tr class="border-b">
-      <td class="py-2 font-mono">{{ item.fqdn }}</td>
-      <td class="py-2">{{ item.expiry_date.strftime('%Y-%m-%d') }}</td>
-      <td class="py-2">{{ '%.2f'|format(item.price) }} {{ item.currency }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="3" class="py-4 text-gray-500">Нет предстоящих продлений с указанной ценой.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<h2 class="section-title">Ближайшие продления (≤ 30 дней)</h2>
+<div class="card overflow-x-auto">
+  <table class="dg-table">
+    <thead><tr><th>Домен</th><th>Истекает</th><th>Цена</th></tr></thead>
+    <tbody>
+      {% for item in forecast %}
+      <tr>
+        <td class="font-mono">{{ item.fqdn }}</td>
+        <td>{{ item.expiry_date.strftime('%Y-%m-%d') }}</td>
+        <td>{{ '%.2f'|format(item.price) }} {{ item.currency }}</td>
+      </tr>
+      {% else %}
+      {{ ui.empty_row(3, "Нет предстоящих продлений с указанной ценой.") }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

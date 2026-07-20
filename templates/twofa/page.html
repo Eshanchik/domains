@@ -1,35 +1,36 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}Двухфакторная аутентификация — DomainGuard{% endblock %}
 {% block content %}
-<h1 class="mb-4 text-lg font-semibold">Двухфакторная аутентификация (TOTP)</h1>
+{{ ui.page_header("Двухфакторная аутентификация (TOTP)") }}
 
-{% if error %}
-  <p class="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</p>
-{% endif %}
+{{ ui.flash(error) }}
 
 {% if user.totp_enabled %}
-  <p class="mb-4 rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
-    2FA включена для вашей учётной записи.
-  </p>
+  <div class="flash flash-success">2FA включена для вашей учётной записи.</div>
   <form method="post" action="/2fa/disable" onsubmit="return confirm('Отключить 2FA?');">
-    <button type="submit" class="rounded border px-3 py-2 text-sm hover:bg-gray-100">Отключить 2FA</button>
+    <button type="submit" class="btn btn-secondary">Отключить 2FA</button>
   </form>
 {% elif secret %}
-  <p class="mb-2 text-sm text-gray-700">1. Добавьте ключ в приложение (Google Authenticator, Aegis, 1Password и т.п.):</p>
-  <div class="mb-3 rounded border bg-gray-50 p-3 text-sm">
-    <div>Секрет: <code class="font-mono">{{ secret }}</code></div>
-    <div class="mt-1 break-all text-xs text-gray-500">otpauth URI: {{ uri }}</div>
+  <div class="card card-p max-w-lg space-y-4">
+    <p class="text-sm text-slate-700 dark:text-slate-300">1. Добавьте ключ в приложение (Google Authenticator, Aegis, 1Password и т.п.):</p>
+    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
+      <div>Секрет: <code class="font-mono">{{ secret }}</code></div>
+      <div class="mt-1 break-all text-xs muted">otpauth URI: {{ uri }}</div>
+    </div>
+    <p class="text-sm text-slate-700 dark:text-slate-300">2. Введите текущий 6-значный код для подтверждения:</p>
+    <form method="post" action="/2fa/enable" class="flex max-w-xs gap-2">
+      <input name="code" required inputmode="numeric" autocomplete="one-time-code"
+             class="input input-mono w-full" />
+      <button type="submit" class="btn btn-primary whitespace-nowrap">Включить</button>
+    </form>
   </div>
-  <p class="mb-2 text-sm text-gray-700">2. Введите текущий 6-значный код для подтверждения:</p>
-  <form method="post" action="/2fa/enable" class="flex max-w-xs gap-2">
-    <input name="code" required inputmode="numeric" autocomplete="one-time-code"
-           class="w-full rounded border px-3 py-2 font-mono" />
-    <button type="submit" class="whitespace-nowrap rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Включить</button>
-  </form>
 {% else %}
-  <p class="mb-4 text-sm text-gray-600">2FA не включена. Сгенерируйте ключ и подтвердите кодом из приложения-аутентификатора.</p>
-  <form method="post" action="/2fa/begin">
-    <button type="submit" class="rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Настроить 2FA</button>
-  </form>
+  <div class="card card-p max-w-lg">
+    <p class="mb-4 text-sm muted">2FA не включена. Сгенерируйте ключ и подтвердите кодом из приложения-аутентификатора.</p>
+    <form method="post" action="/2fa/begin">
+      <button type="submit" class="btn btn-primary">Настроить 2FA</button>
+    </form>
+  </div>
 {% endif %}
 {% endblock %}

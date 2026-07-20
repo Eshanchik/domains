@@ -1,40 +1,45 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}Проекты — DomainGuard{% endblock %}
 {% block content %}
-<div class="mb-4 flex items-center justify-between">
-  <h1 class="text-lg font-semibold">Проекты</h1>
+{% call ui.page_header("Проекты", count=projects | length) %}
   {% if user.role.value == "admin" %}
-    <a href="/projects/new" class="rounded bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-700">Добавить</a>
+    <a href="/projects/new" class="btn btn-primary">{{ ui.icon("plus", "h-4 w-4") }}Добавить</a>
   {% endif %}
+{% endcall %}
+
+<div class="card overflow-x-auto">
+  <table class="dg-table">
+    <thead>
+      <tr>
+        <th>Компания</th>
+        <th>Название</th>
+        <th>Код</th>
+        {% if user.role.value == "admin" %}<th></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in projects %}
+      <tr>
+        <td class="muted">{{ companies[p.company_id].name if p.company_id in companies else p.company_id }}</td>
+        <td class="font-medium text-slate-800 dark:text-slate-100">{{ p.name }}</td>
+        <td class="font-mono">{{ p.code }}</td>
+        {% if user.role.value == "admin" %}
+        <td>
+          <div class="flex items-center gap-3">
+            <a href="/projects/{{ p.id }}/edit" class="link">Изменить</a>
+            <form method="post" action="/projects/{{ p.id }}/delete" class="inline"
+                  onsubmit="return confirm('Удалить проект «{{ p.name }}»?');">
+              <button type="submit" class="btn-link-danger">Удалить</button>
+            </form>
+          </div>
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      {{ ui.empty_row(4, "Нет проектов.") }}
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
-<table class="w-full border-collapse text-sm">
-  <thead>
-    <tr class="border-b text-left text-gray-600">
-      <th class="py-2">Компания</th>
-      <th class="py-2">Название</th>
-      <th class="py-2">Код</th>
-      {% if user.role.value == "admin" %}<th class="py-2"></th>{% endif %}
-    </tr>
-  </thead>
-  <tbody>
-    {% for p in projects %}
-    <tr class="border-b">
-      <td class="py-2">{{ companies[p.company_id].name if p.company_id in companies else p.company_id }}</td>
-      <td class="py-2">{{ p.name }}</td>
-      <td class="py-2 font-mono">{{ p.code }}</td>
-      {% if user.role.value == "admin" %}
-      <td class="py-2">
-        <a href="/projects/{{ p.id }}/edit" class="text-blue-600 hover:underline">Изменить</a>
-        <form method="post" action="/projects/{{ p.id }}/delete" class="ml-2 inline"
-              onsubmit="return confirm('Удалить проект «{{ p.name }}»?');">
-          <button type="submit" class="text-red-600 hover:underline">Удалить</button>
-        </form>
-      </td>
-      {% endif %}
-    </tr>
-    {% else %}
-    <tr><td colspan="4" class="py-4 text-gray-500">Нет проектов.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
 {% endblock %}

@@ -1,42 +1,52 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}Вебхуки — DomainGuard{% endblock %}
 {% block content %}
-<h1 class="mb-4 text-lg font-semibold">Исходящие вебхуки</h1>
-<p class="mb-4 text-sm text-gray-600">
-  На каждое событие алерта POST-запрос с JSON на указанные URL. Если задан секрет —
-  подпись <code>X-DomainGuard-Signature: sha256=…</code> (HMAC тела).
-</p>
+{{ ui.page_header("Исходящие вебхуки", subtitle="На каждое событие алерта POST-запрос с JSON на указанные URL. Если задан секрет — подпись X-DomainGuard-Signature: sha256=… (HMAC тела).") }}
 
-<table class="mb-6 w-full border-collapse text-sm">
-  <thead>
-    <tr class="border-b text-left text-gray-600">
-      <th class="py-2">URL</th><th class="py-2">События</th><th class="py-2">Подпись</th><th class="py-2">Активен</th><th class="py-2"></th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for e in endpoints %}
-    <tr class="border-b">
-      <td class="py-2 font-mono break-all">{{ e.url }}</td>
-      <td class="py-2">{{ e.events | join(', ') if e.events else 'все' }}</td>
-      <td class="py-2">{{ 'да' if e.secret_enc else 'нет' }}</td>
-      <td class="py-2">{{ 'да' if e.is_active else 'нет' }}</td>
-      <td class="py-2">
-        <form method="post" action="/webhooks/{{ e.id }}/delete" class="inline" onsubmit="return confirm('Удалить вебхук?');">
-          <button class="text-red-600 hover:underline">Удалить</button>
-        </form>
-      </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="5" class="py-4 text-gray-500">Вебхуков нет.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="card overflow-x-auto">
+  <table class="dg-table">
+    <thead>
+      <tr>
+        <th>URL</th><th>События</th><th>Подпись</th><th>Активен</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in endpoints %}
+      <tr>
+        <td class="font-mono break-all">{{ e.url }}</td>
+        <td>{{ e.events | join(', ') if e.events else 'все' }}</td>
+        <td>{% if e.secret_enc %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</td>
+        <td>{% if e.is_active %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</td>
+        <td>
+          <form method="post" action="/webhooks/{{ e.id }}/delete" class="inline" onsubmit="return confirm('Удалить вебхук?');">
+            <button class="btn-link-danger">Удалить</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      {{ ui.empty_row(5, "Вебхуков нет.") }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 
-<h2 class="mb-2 text-sm font-medium text-gray-600">Добавить вебхук</h2>
-<form method="post" action="/webhooks" class="grid max-w-lg grid-cols-2 gap-2 text-sm">
-  <label class="col-span-2">URL<input name="url" required placeholder="https://example.com/hook" class="mt-1 w-full rounded border px-2 py-1 font-mono" /></label>
-  <label>Секрет (опц.)<input name="secret" class="mt-1 w-full rounded border px-2 py-1" /></label>
-  <label>События (через запятую, пусто = все)<input name="events" placeholder="expiry,vt_malicious,ns_change" class="mt-1 w-full rounded border px-2 py-1" /></label>
-  <div class="col-span-2"><button type="submit" class="rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Добавить</button></div>
-</form>
+<h2 class="section-title mt-6 mb-2">Добавить вебхук</h2>
+<div class="card card-p max-w-lg">
+  <form method="post" action="/webhooks" class="grid grid-cols-2 gap-4">
+    <div class="col-span-2">
+      <label class="label" for="webhook_url">URL</label>
+      <input id="webhook_url" name="url" required placeholder="https://example.com/hook" class="input input-mono" />
+    </div>
+    <div>
+      <label class="label" for="webhook_secret">Секрет (опц.)</label>
+      <input id="webhook_secret" name="secret" class="input" />
+    </div>
+    <div>
+      <label class="label" for="webhook_events">События (через запятую, пусто = все)</label>
+      <input id="webhook_events" name="events" placeholder="expiry,vt_malicious,ns_change" class="input" />
+    </div>
+    <div class="col-span-2"><button type="submit" class="btn btn-primary">Добавить</button></div>
+  </form>
+</div>
 {% endblock %}

@@ -1,53 +1,54 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}Импорт — {{ "результат" if committed else "предпросмотр" }} — DomainGuard{% endblock %}
 {% block content %}
-<h1 class="mb-2 text-lg font-semibold">
-  Импорт — {{ "результат" if committed else "предпросмотр" }}
-</h1>
-<p class="mb-4 text-sm text-gray-600">
-  Создано: <b class="text-green-700">{{ report.created }}</b> ·
-  Обновлено: <b class="text-blue-700">{{ report.updated }}</b> ·
-  Ошибок: <b class="text-red-700">{{ report.errors }}</b>
+{{ ui.page_header("Импорт — " ~ ("результат" if committed else "предпросмотр")) }}
+<p class="mb-4 flex flex-wrap items-center gap-2 text-sm">
+  <span class="muted">Создано:</span> {{ ui.badge(report.created, "green") }}
+  <span class="muted">Обновлено:</span> {{ ui.badge(report.updated, "blue") }}
+  <span class="muted">Ошибок:</span> {{ ui.badge(report.errors, "red") }}
 </p>
 
 {% if committed %}
-  <p class="mb-4 rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
-    Импорт выполнен. <a href="/domains" class="underline">К списку доменов</a>.
-  </p>
+  <div class="flash flash-success">
+    Импорт выполнен. <a href="/domains" class="link">К списку доменов</a>.
+  </div>
 {% elif report.created + report.updated > 0 %}
-  <form method="post" action="/import" class="mb-4">
+  <form method="post" action="/import" class="mb-4 flex items-center gap-3">
     <input type="hidden" name="commit" value="true" />
     <input type="hidden" name="content" value="{{ content }}" />
     <input type="hidden" name="fmt" value="{{ fmt }}" />
     <input type="hidden" name="default_project_id" value="{{ default_project_id }}" />
-    <button type="submit" class="rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">
+    <button type="submit" class="btn btn-primary">
       Импортировать ({{ report.created + report.updated }})
     </button>
-    <a href="/import" class="ml-2 text-sm text-gray-600 hover:underline">Отмена</a>
+    <a href="/import" class="btn btn-ghost">Отмена</a>
   </form>
 {% else %}
-  <a href="/import" class="text-sm text-gray-600 hover:underline">← Назад</a>
+  <a href="/import" class="btn btn-ghost mb-4">← Назад</a>
 {% endif %}
 
-<table class="w-full border-collapse text-sm">
-  <thead>
-    <tr class="border-b text-left text-gray-600">
-      <th class="py-1">Строка</th><th class="py-1">Домен</th><th class="py-1">Действие</th><th class="py-1">Сообщение</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for r in report.rows %}
-    <tr class="border-b">
-      <td class="py-1">{{ r.line }}</td>
-      <td class="py-1 font-mono">{{ r.fqdn or '—' }}</td>
-      <td class="py-1">
-        {% if r.action == 'created' %}<span class="text-green-700">создан</span>
-        {% elif r.action == 'updated' %}<span class="text-blue-700">обновлён</span>
-        {% else %}<span class="text-red-700">ошибка</span>{% endif %}
-      </td>
-      <td class="py-1 text-gray-600">{{ r.message }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="card overflow-x-auto">
+  <table class="dg-table">
+    <thead>
+      <tr>
+        <th>Строка</th><th>Домен</th><th>Действие</th><th>Сообщение</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in report.rows %}
+      <tr>
+        <td>{{ r.line }}</td>
+        <td class="font-mono">{{ r.fqdn or '—' }}</td>
+        <td>
+          {% if r.action == 'created' %}{{ ui.badge("создан", "green") }}
+          {% elif r.action == 'updated' %}{{ ui.badge("обновлён", "blue") }}
+          {% else %}{{ ui.badge("ошибка", "red") }}{% endif %}
+        </td>
+        <td class="muted">{{ r.message }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

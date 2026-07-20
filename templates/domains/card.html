@@ -1,98 +1,92 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}{{ domain.fqdn }} — DomainGuard{% endblock %}
 {% block content %}
-<div class="mb-4 flex items-center justify-between">
-  <h1 class="text-lg font-semibold font-mono">{{ domain.fqdn }}</h1>
+{% call ui.page_header(domain.fqdn) %}
   {% if user.role.value in ("admin", "manager") %}
-  <div class="flex gap-2 text-sm">
-    <a href="/domains/{{ domain.id }}/edit" class="rounded border px-3 py-1 hover:bg-gray-100">Изменить</a>
+    <a href="/domains/{{ domain.id }}/edit" class="btn btn-secondary btn-sm">Изменить</a>
     <form method="post" action="/domains/{{ domain.id }}/archive">
       <input type="hidden" name="archived" value="{{ 'false' if not domain.is_active else 'true' }}" />
-      <button type="submit" class="rounded border px-3 py-1 hover:bg-gray-100">
+      <button type="submit" class="btn btn-secondary btn-sm">
         {{ 'Вернуть из архива' if not domain.is_active else 'В архив' }}
       </button>
     </form>
-  </div>
   {% endif %}
-</div>
+{% endcall %}
 
-<dl class="mb-6 grid grid-cols-2 gap-x-6 gap-y-1 text-sm md:grid-cols-3">
-  <div><dt class="text-gray-500">Проект</dt><dd>{{ project.name if project else domain.project_id }}</dd></div>
-  <div><dt class="text-gray-500">TLD</dt><dd>{{ domain.tld }}</dd></div>
-  <div><dt class="text-gray-500">Punycode</dt><dd class="font-mono">{{ domain.punycode }}</dd></div>
-  <div><dt class="text-gray-500">Истекает</dt><dd>{{ domain.expiry_date.strftime('%Y-%m-%d') if domain.expiry_date else '—' }}</dd></div>
-  <div><dt class="text-gray-500">Auto-renew</dt><dd>{{ {none:'неизвестно', true:'да', false:'нет'}[domain.auto_renew] }}</dd></div>
-  <div><dt class="text-gray-500">Активен</dt><dd>{{ 'да' if domain.is_active else 'нет' }}</dd></div>
-  <div><dt class="text-gray-500">Nameservers</dt><dd>{{ domain.nameservers | join(', ') or '—' }}</dd></div>
-  <div><dt class="text-gray-500">Теги</dt><dd>{{ domain.tags | map(attribute='name') | join(', ') or '—' }}</dd></div>
-  <div><dt class="text-gray-500">Цена продления</dt><dd>{{ domain.renewal_price ~ ' ' ~ domain.renewal_currency if domain.renewal_price else '—' }}</dd></div>
-</dl>
+<div class="card card-p mb-6">
+  <dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3">
+    <div><dt class="muted">Проект</dt><dd class="mt-0.5 font-medium">{{ project.name if project else domain.project_id }}</dd></div>
+    <div><dt class="muted">TLD</dt><dd class="mt-0.5">{{ domain.tld }}</dd></div>
+    <div><dt class="muted">Punycode</dt><dd class="mt-0.5 font-mono">{{ domain.punycode }}</dd></div>
+    <div><dt class="muted">Истекает</dt><dd class="mt-0.5">{{ domain.expiry_date.strftime('%Y-%m-%d') if domain.expiry_date else '—' }}</dd></div>
+    <div><dt class="muted">Auto-renew</dt><dd class="mt-0.5">{{ {none:'неизвестно', true:'да', false:'нет'}[domain.auto_renew] }}</dd></div>
+    <div><dt class="muted">Активен</dt><dd class="mt-0.5">{% if domain.is_active %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</dd></div>
+    <div><dt class="muted">Nameservers</dt><dd class="mt-0.5 break-words">{{ domain.nameservers | join(', ') or '—' }}</dd></div>
+    <div><dt class="muted">Теги</dt><dd class="mt-0.5">{% for t in domain.tags %}{{ ui.badge(t.name, "gray") }} {% else %}—{% endfor %}</dd></div>
+    <div><dt class="muted">Цена продления</dt><dd class="mt-0.5">{{ domain.renewal_price ~ ' ' ~ domain.renewal_currency if domain.renewal_price else '—' }}</dd></div>
+  </dl>
+</div>
 
 {# Health-checks (кастомная доступность) #}
 <section class="mb-6">
-  <h2 class="mb-2 text-sm font-medium text-gray-600">Health-checks</h2>
-  {% if healthchecks %}
-  <table class="mb-3 w-full border-collapse text-sm">
-    <thead>
-      <tr class="border-b text-left text-gray-500">
-        <th class="py-1">URL</th><th class="py-1">Метод</th><th class="py-1">Ожид.</th>
-        <th class="py-1">Состояние</th><th class="py-1">Последняя</th>
-        {% if user.role.value in ("admin","manager") %}<th class="py-1"></th>{% endif %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for hc in healthchecks %}
-      <tr class="border-b">
-        <td class="py-1 font-mono text-xs">{{ hc.url }}</td>
-        <td class="py-1">{{ hc.method }}</td>
-        <td class="py-1">{{ hc.expected_statuses }}</td>
-        <td class="py-1">
-          <span class="{{ 'text-green-700' if hc.state=='up' else ('text-red-700' if hc.state=='down' else 'text-gray-400') }}">
-            {{ hc.state }}{% if hc.consecutive_failures %} ({{ hc.consecutive_failures }}){% endif %}
-          </span>
-        </td>
-        <td class="py-1">{{ hc.last_checked_at.strftime('%Y-%m-%d %H:%M') if hc.last_checked_at else '—' }}</td>
-        {% if user.role.value in ("admin","manager") %}
-        <td class="py-1">
-          <form method="post" action="/healthchecks/{{ hc.id }}/delete" class="inline"
-                onsubmit="return confirm('Удалить health-check?');">
-            <button type="submit" class="text-red-600 hover:underline">Удалить</button>
-          </form>
-        </td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="mb-3 text-sm text-gray-500">Health-check'ов нет (домен по доступности не проверяется).</p>
-  {% endif %}
+  <h2 class="section-title">Health-checks</h2>
+  <div class="card overflow-x-auto">
+    <table class="dg-table">
+      <thead>
+        <tr>
+          <th>URL</th><th>Метод</th><th>Ожид.</th><th>Состояние</th><th>Последняя</th>
+          {% if user.role.value in ("admin","manager") %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for hc in healthchecks %}
+        <tr>
+          <td class="font-mono text-xs">{{ hc.url }}</td>
+          <td>{{ hc.method }}</td>
+          <td>{{ hc.expected_statuses }}</td>
+          <td>{{ ui.status_badge(hc.state) }}{% if hc.consecutive_failures %} <span class="muted text-xs">({{ hc.consecutive_failures }})</span>{% endif %}</td>
+          <td>{{ hc.last_checked_at.strftime('%Y-%m-%d %H:%M') if hc.last_checked_at else '—' }}</td>
+          {% if user.role.value in ("admin","manager") %}
+          <td>
+            <form method="post" action="/healthchecks/{{ hc.id }}/delete" class="inline" onsubmit="return confirm('Удалить health-check?');">
+              <button type="submit" class="btn-link-danger text-sm">Удалить</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        {{ ui.empty_row(6 if user.role.value in ("admin","manager") else 5, "Health-check'ов нет (домен по доступности не проверяется).") }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 
   {% if user.role.value in ("admin","manager") %}
-  <details class="rounded border p-3 text-sm">
-    <summary class="cursor-pointer text-gray-700">Добавить health-check</summary>
-    <form method="post" action="/domains/{{ domain.id }}/healthchecks" class="mt-3 grid grid-cols-2 gap-2">
-      <label class="col-span-2">URL
-        <input name="url" required placeholder="https://{{ domain.fqdn }}/click?pid=1" class="mt-1 w-full rounded border px-2 py-1 font-mono" />
+  <details class="card card-p mt-3 text-sm">
+    <summary class="cursor-pointer font-medium text-slate-700 dark:text-slate-200">Добавить health-check</summary>
+    <form method="post" action="/domains/{{ domain.id }}/healthchecks" class="mt-4 grid grid-cols-2 gap-3">
+      <label class="col-span-2"><span class="label">URL</span>
+        <input name="url" required placeholder="https://{{ domain.fqdn }}/click?pid=1" class="input input-mono" />
       </label>
-      <label>Метод
-        <select name="method" class="mt-1 w-full rounded border px-2 py-1"><option>GET</option><option>HEAD</option></select>
+      <label><span class="label">Метод</span>
+        <select name="method" class="select"><option>GET</option><option>HEAD</option></select>
       </label>
-      <label>Ожид. статусы
-        <input name="expected_statuses" value="200-299" class="mt-1 w-full rounded border px-2 py-1" />
+      <label><span class="label">Ожид. статусы</span>
+        <input name="expected_statuses" value="200-299" class="input" />
       </label>
-      <label class="flex items-center gap-2"><input type="checkbox" name="follow_redirects" /> следовать редиректам</label>
-      <label>Location-паттерн
-        <input name="location_pattern" placeholder="(regex/подстрока)" class="mt-1 w-full rounded border px-2 py-1" />
+      <label class="col-span-2 flex items-center gap-2 pt-1"><input type="checkbox" name="follow_redirects" class="checkbox" /> следовать редиректам</label>
+      <label><span class="label">Location-паттерн</span>
+        <input name="location_pattern" placeholder="(regex/подстрока)" class="input" />
       </label>
-      <label>Подстрока в теле
-        <input name="body_substring" class="mt-1 w-full rounded border px-2 py-1" />
+      <label><span class="label">Подстрока в теле</span>
+        <input name="body_substring" class="input" />
       </label>
-      <label>Порог неудач
-        <input name="fail_threshold" type="number" value="3" class="mt-1 w-full rounded border px-2 py-1" />
+      <label><span class="label">Порог неудач</span>
+        <input name="fail_threshold" type="number" value="3" class="input" />
       </label>
       <div class="col-span-2">
-        <button type="submit" class="rounded bg-gray-900 px-3 py-1 text-white hover:bg-gray-700">Добавить</button>
+        <button type="submit" class="btn btn-primary btn-sm">Добавить</button>
       </div>
     </form>
   </details>
@@ -101,52 +95,53 @@
 
 {# Активные алерты по домену #}
 <section class="mb-6">
-  <h2 class="mb-2 text-sm font-medium text-gray-600">Активные алерты</h2>
+  <h2 class="section-title">Активные алерты</h2>
   {% if alerts %}
-  <ul class="text-sm">
+  <div class="card divide-y divide-slate-100 dark:divide-slate-800">
     {% for a in alerts %}
-    <li class="border-b py-1">
-      <span class="{{ 'text-red-700' if a.severity=='high' else 'text-gray-700' }}">{{ a.kind }}</span>
-      <span class="text-gray-400">({{ a.severity }}, {{ a.fired_at.strftime('%Y-%m-%d %H:%M') }})</span>
-    </li>
+    <div class="flex items-center gap-2 px-4 py-2.5 text-sm">
+      {{ ui.status_badge(a.severity) }}
+      <span class="font-medium">{{ a.kind }}</span>
+      <span class="muted text-xs">{{ a.fired_at.strftime('%Y-%m-%d %H:%M') }}</span>
+    </div>
     {% endfor %}
-  </ul>
+  </div>
   {% else %}
-  <p class="text-sm text-gray-500">Активных алертов нет.</p>
+  <p class="text-sm muted">Активных алертов нет.</p>
   {% endif %}
 </section>
 
 {# Платежи #}
 <section class="mb-6">
-  <h2 class="mb-2 text-sm font-medium text-gray-600">Платежи</h2>
-  {% if payments %}
-  <table class="mb-3 w-full border-collapse text-sm">
-    <thead><tr class="border-b text-left text-gray-500"><th class="py-1">Дата</th><th class="py-1">Сумма</th><th class="py-1">Курс→USD</th><th class="py-1">USD</th><th class="py-1">Заметка</th></tr></thead>
-    <tbody>
-      {% for p in payments %}
-      <tr class="border-b">
-        <td class="py-1">{{ p.paid_at.strftime('%Y-%m-%d') }}</td>
-        <td class="py-1">{{ '%.2f'|format(p.amount) }} {{ p.currency }}</td>
-        <td class="py-1">{{ '%.4f'|format(p.rate_to_usd) }}</td>
-        <td class="py-1">{{ '%.2f'|format(p.amount_usd) }}</td>
-        <td class="py-1 text-gray-500">{{ p.note or '—' }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="mb-3 text-sm text-gray-500">Платежей нет.</p>
-  {% endif %}
+  <h2 class="section-title">Платежи</h2>
+  <div class="card overflow-x-auto">
+    <table class="dg-table">
+      <thead><tr><th>Дата</th><th>Сумма</th><th>Курс→USD</th><th>USD</th><th>Заметка</th></tr></thead>
+      <tbody>
+        {% for p in payments %}
+        <tr>
+          <td>{{ p.paid_at.strftime('%Y-%m-%d') }}</td>
+          <td>{{ '%.2f'|format(p.amount) }} {{ p.currency }}</td>
+          <td>{{ '%.4f'|format(p.rate_to_usd) }}</td>
+          <td class="font-medium">{{ '%.2f'|format(p.amount_usd) }}</td>
+          <td class="muted">{{ p.note or '—' }}</td>
+        </tr>
+        {% else %}
+        {{ ui.empty_row(5, "Платежей нет.") }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   {% if user.role.value in ("admin","manager") %}
-  <details class="rounded border p-3 text-sm">
-    <summary class="cursor-pointer text-gray-700">Добавить платёж</summary>
-    <form method="post" action="/domains/{{ domain.id }}/payments" class="mt-3 grid grid-cols-2 gap-2">
-      <label>Сумма<input name="amount" required class="mt-1 w-full rounded border px-2 py-1" /></label>
-      <label>Валюта<input name="currency" value="USD" class="mt-1 w-full rounded border px-2 py-1" /></label>
-      <label>Дата<input name="paid_at" type="date" class="mt-1 w-full rounded border px-2 py-1" /></label>
-      <label>Курс→USD (опц., иначе авто)<input name="rate_override" class="mt-1 w-full rounded border px-2 py-1" /></label>
-      <label class="col-span-2">Заметка<input name="note" class="mt-1 w-full rounded border px-2 py-1" /></label>
-      <div class="col-span-2"><button type="submit" class="rounded bg-gray-900 px-3 py-1 text-white hover:bg-gray-700">Сохранить</button></div>
+  <details class="card card-p mt-3 text-sm">
+    <summary class="cursor-pointer font-medium text-slate-700 dark:text-slate-200">Добавить платёж</summary>
+    <form method="post" action="/domains/{{ domain.id }}/payments" class="mt-4 grid grid-cols-2 gap-3">
+      <label><span class="label">Сумма</span><input name="amount" required class="input" /></label>
+      <label><span class="label">Валюта</span><input name="currency" value="USD" class="input" /></label>
+      <label><span class="label">Дата</span><input name="paid_at" type="date" class="input" /></label>
+      <label><span class="label">Курс→USD (опц., иначе авто)</span><input name="rate_override" class="input" /></label>
+      <label class="col-span-2"><span class="label">Заметка</span><input name="note" class="input" /></label>
+      <div class="col-span-2"><button type="submit" class="btn btn-primary btn-sm">Сохранить</button></div>
     </form>
   </details>
   {% endif %}
@@ -154,49 +149,47 @@
 
 {# Недавние проверки #}
 <section class="mb-6">
-  <h2 class="mb-2 text-sm font-medium text-gray-600">Последние проверки</h2>
-  <table class="w-full border-collapse text-sm">
-    <thead>
-      <tr class="border-b text-left text-gray-500"><th class="py-1">Когда</th><th class="py-1">Тип</th><th class="py-1">Статус</th></tr>
-    </thead>
-    <tbody>
-      {% for c in recent_checks %}
-      <tr class="border-b">
-        <td class="py-1">{{ c.checked_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td class="py-1">{{ c.type }}</td>
-        <td class="py-1">
-          <span class="{{ 'text-green-700' if c.status=='ok' else ('text-red-700' if c.status in ('fail','stale') else 'text-yellow-700') }}">{{ c.status }}</span>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="3" class="py-3 text-gray-500">Проверок пока нет.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <h2 class="section-title">Последние проверки</h2>
+  <div class="card overflow-x-auto">
+    <table class="dg-table">
+      <thead><tr><th>Когда</th><th>Тип</th><th>Статус</th></tr></thead>
+      <tbody>
+        {% for c in recent_checks %}
+        <tr>
+          <td>{{ c.checked_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ c.type }}</td>
+          <td>{{ ui.status_badge(c.status) }}</td>
+        </tr>
+        {% else %}
+        {{ ui.empty_row(3, "Проверок пока нет.") }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 
 {# История изменений полей #}
 <section>
-  <h2 class="mb-2 text-sm font-medium text-gray-600">История изменений полей</h2>
-  <table class="w-full border-collapse text-sm">
-    <thead>
-      <tr class="border-b text-left text-gray-500">
-        <th class="py-1">Когда</th><th class="py-1">Поле</th><th class="py-1">Было</th><th class="py-1">Стало</th><th class="py-1">Источник</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for h in domain.history %}
-      <tr class="border-b">
-        <td class="py-1">{{ h.changed_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td class="py-1">{{ h.field }}</td>
-        <td class="py-1 text-gray-500">{{ h.old or '—' }}</td>
-        <td class="py-1">{{ h.new or '—' }}</td>
-        <td class="py-1">{{ h.source }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5" class="py-3 text-gray-500">Изменений пока нет.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <h2 class="section-title">История изменений полей</h2>
+  <div class="card overflow-x-auto">
+    <table class="dg-table">
+      <thead>
+        <tr><th>Когда</th><th>Поле</th><th>Было</th><th>Стало</th><th>Источник</th></tr>
+      </thead>
+      <tbody>
+        {% for h in domain.history %}
+        <tr>
+          <td>{{ h.changed_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="font-mono text-xs">{{ h.field }}</td>
+          <td class="muted">{{ h.old or '—' }}</td>
+          <td>{{ h.new or '—' }}</td>
+          <td>{{ ui.badge(h.source, "gray") }}</td>
+        </tr>
+        {% else %}
+        {{ ui.empty_row(5, "Изменений пока нет.") }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endblock %}

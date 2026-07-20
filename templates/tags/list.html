@@ -1,27 +1,30 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}Теги — DomainGuard{% endblock %}
 {% block content %}
-<h1 class="mb-4 text-lg font-semibold">Теги</h1>
+{{ ui.page_header("Теги", count=tags | length) }}
 
 {% if user.role.value == "admin" %}
-<form method="post" action="/tags" class="mb-4 flex max-w-md gap-2">
-  <input name="name" required placeholder="Новый тег" class="w-full rounded border px-3 py-2" />
-  <button type="submit" class="whitespace-nowrap rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Добавить</button>
+<div class="card card-p max-w-lg mb-5">
+<form method="post" action="/tags" class="flex gap-2">
+  <input name="name" required placeholder="Новый тег" class="input" />
+  <button type="submit" class="btn btn-primary whitespace-nowrap">{{ ui.icon("plus", "h-4 w-4") }}Добавить</button>
 </form>
+</div>
 {% endif %}
 
 <div class="flex flex-wrap gap-2">
   {% for t in tags %}
-    <span class="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-sm">
+    <span class="badge badge-gray gap-1.5">
       {{ t.name }}
       {% if user.role.value == "admin" %}
         <form method="post" action="/tags/{{ t.id }}/delete" class="inline">
-          <button type="submit" class="text-red-600 hover:underline" title="Удалить">×</button>
+          <button type="submit" class="btn-link-danger" title="Удалить">×</button>
         </form>
       {% endif %}
     </span>
   {% else %}
-    <p class="text-gray-500">Нет тегов.</p>
+    <p class="muted">Нет тегов.</p>
   {% endfor %}
 </div>
 {% endblock %}
