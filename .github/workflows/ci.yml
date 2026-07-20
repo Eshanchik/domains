@@ -49,7 +49,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://domainguard:domainguard@localhost:5432/domainguard
       REDIS_URL: redis://localhost:6379/0
-      DG_MASTER_KEY: ci-test-key
+      DG_MASTER_KEY: 2f4lEgCux7eN2sivGri_2plV3lhH3soDWV4g2PwwwGk=
       ENVIRONMENT: test
     steps:
       - uses: actions/checkout@v4

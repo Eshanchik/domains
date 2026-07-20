@@ -141,11 +141,20 @@
   Проверено в Docker на реальном TLS: everness.online + www → серт Google Trust
   Services, valid_to 2026-08-25, status ok.
 
-- [ ] **T09. VirusTotal.**
+- [x] **T09. VirusTotal.** _(2026-07-20)_
   Клиент `GET /domains/{fqdn}`; глобальная очередь под бюджет free-ключа
   (4/мин, 500/день) — воркер тянет следующий домен по кругу; VtResult +
   CheckResult; ключ — в Setting (шифрован). Тесты: соблюдение бюджета
   (fake clock), 429 → пауза, детект → событие для алертера.
+  _Сделано:_ `core/crypto` (Fernet at-rest, mask); модели Setting/VtResult
+  (+миграция); `services/settings_store` (get/set/masked зашифрованных секретов);
+  `checks/vt` (query_vt: 429/401/5xx/timeout→VtError, 404→нет детектов; бюджет:
+  per-minute токен-бакет 4/мин + дневной 500/день; circuit breaker; malicious≥1→
+  fail, suspicious≥1→warn; VtResult+CheckResult; сбой→stale); актор диспатчит vt;
+  админ-страница `/settings` (VT-ключ и TG-токен, маскирование, пустое поле не
+  затирает). Тесты: 100 (crypto; vt not_configured/ok/detection→fail/429→stale/
+  per-min budget=4). Проверено в Docker: сохранение VT-ключа → маска `MYSE***`,
+  в БД зашифровано (без утечки plaintext). Реальный вызов VT — на деплое (ключ).
 
 - [ ] **T10. Health-checks (кастомные URL).**
   Модель HealthCheck/HealthCheckResult; CRUD в карточке домена; шаблонное

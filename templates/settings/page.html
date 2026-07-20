@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Настройки — DomainGuard{% endblock %}
+{% block content %}
+<h1 class="mb-4 text-lg font-semibold">Настройки</h1>
+<p class="mb-4 text-sm text-gray-600">
+  Секреты хранятся зашифрованными (Fernet). Показываются в маскированном виде;
+  пустое поле оставляет текущее значение без изменений.
+</p>
+<form method="post" action="/settings" class="max-w-md space-y-4">
+  <div>
+    <label class="block text-sm text-gray-600" for="vt_api_key">
+      VirusTotal API key {% if vt_masked %}<span class="text-gray-400">(сейчас: {{ vt_masked }})</span>{% endif %}
+    </label>
+    <input id="vt_api_key" name="vt_api_key" type="password" autocomplete="off"
+           placeholder="{{ 'оставить как есть' if vt_masked else 'не задан' }}"
+           class="mt-1 w-full rounded border px-3 py-2" />
+  </div>
+  <div>
+    <label class="block text-sm text-gray-600" for="telegram_bot_token">
+      Telegram bot token {% if tg_masked %}<span class="text-gray-400">(сейчас: {{ tg_masked }})</span>{% endif %}
+    </label>
+    <input id="telegram_bot_token" name="telegram_bot_token" type="password" autocomplete="off"
+           placeholder="{{ 'оставить как есть' if tg_masked else 'не задан' }}"
+           class="mt-1 w-full rounded border px-3 py-2" />
+  </div>
+  <button type="submit" class="rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Сохранить</button>
+</form>
+{% endblock %}
