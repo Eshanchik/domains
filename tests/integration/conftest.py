@@ -43,8 +43,8 @@ def _clean_state():
         async with engine.begin() as conn:
             await conn.execute(
                 text(
-                    "TRUNCATE users, user_scopes, audit_log, companies, projects, tags "
-                    "RESTART IDENTITY CASCADE"
+                    "TRUNCATE users, user_scopes, audit_log, companies, projects, tags, "
+                    "domains, domain_tags, domain_field_history RESTART IDENTITY CASCADE"
                 )
             )
         redis = get_redis()
@@ -114,6 +114,33 @@ def make_project() -> Callable[..., int]:
                 await s.commit()
                 await s.refresh(p)
                 return p.id
+
+        return _run(create())
+
+    return _make
+
+
+@pytest.fixture
+def make_domain() -> Callable[..., int]:
+    def _make(project_id: int, fqdn: str = "example.com", **kwargs) -> int:
+        from app.core.fqdn import normalize_fqdn
+        from app.models.domain import Domain
+
+        async def create() -> int:
+            norm = normalize_fqdn(fqdn)
+            async with SessionLocal() as s:
+                d = Domain(
+                    project_id=project_id,
+                    fqdn=norm.fqdn,
+                    punycode=norm.punycode,
+                    tld=norm.tld,
+                    field_sources={"fqdn": "manual"},
+                    **kwargs,
+                )
+                s.add(d)
+                await s.commit()
+                await s.refresh(d)
+                return d.id
 
         return _run(create())
 

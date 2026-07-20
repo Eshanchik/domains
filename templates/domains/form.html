@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ "Изменить домен" if domain else "Новый домен" }} — DomainGuard{% endblock %}
+{% block content %}
+{% set editing = domain is not none %}
+<h1 class="mb-4 text-lg font-semibold">{{ "Изменить домен" if editing else "Новый домен" }}</h1>
+{% if error %}
+  <p class="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</p>
+{% endif %}
+<form method="post" action="{{ '/domains/' ~ domain.id if editing else '/domains' }}" class="max-w-lg space-y-3">
+  <div>
+    <label class="block text-sm text-gray-600" for="fqdn">Домен (FQDN)</label>
+    {% if editing %}
+      <input id="fqdn" value="{{ domain.fqdn }}" disabled class="mt-1 w-full rounded border bg-gray-100 px-3 py-2 font-mono" />
+    {% else %}
+      <input id="fqdn" name="fqdn" required placeholder="example.com" class="mt-1 w-full rounded border px-3 py-2 font-mono" />
+    {% endif %}
+  </div>
+  {% if not editing %}
+  <div>
+    <label class="block text-sm text-gray-600" for="project_id">Проект</label>
+    <select id="project_id" name="project_id" required class="mt-1 w-full rounded border px-3 py-2">
+      {% for p in projects %}<option value="{{ p.id }}">{{ p.name }} ({{ p.code }})</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  {% if editing %}
+  <div>
+    <label class="block text-sm text-gray-600" for="expiry_date">Дата истечения (YYYY-MM-DD)</label>
+    <input id="expiry_date" name="expiry_date" type="date"
+           value="{{ domain.expiry_date.strftime('%Y-%m-%d') if domain.expiry_date else '' }}"
+           class="mt-1 w-full rounded border px-3 py-2" />
+  </div>
+  {% endif %}
+  <div>
+    <label class="block text-sm text-gray-600" for="tags">Теги (через запятую)</label>
+    <input id="tags" name="tags" value="{{ domain.tags | map(attribute='name') | join(', ') if editing else '' }}"
+           class="mt-1 w-full rounded border px-3 py-2" />
+  </div>
+  <div>
+    <label class="block text-sm text-gray-600" for="ssl_extra_hosts">Доп. хосты для SSL (по строке)</label>
+    <textarea id="ssl_extra_hosts" name="ssl_extra_hosts" rows="2" class="mt-1 w-full rounded border px-3 py-2 font-mono text-sm">{{ domain.ssl_extra_hosts | join('\n') if editing else '' }}</textarea>
+  </div>
+  <div>
+    <label class="block text-sm text-gray-600" for="notes">Заметки</label>
+    <textarea id="notes" name="notes" rows="2" class="mt-1 w-full rounded border px-3 py-2">{{ domain.notes if editing and domain.notes else '' }}</textarea>
+  </div>
+  <button type="submit" class="rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Сохранить</button>
+  <a href="/domains" class="ml-2 text-sm text-gray-600 hover:underline">Отмена</a>
+</form>
+{% endblock %}
