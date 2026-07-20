@@ -1,26 +1,48 @@
 """Check actors — dispatch a due (domain, check_type) to its check implementation.
 
-Actors are synchronous (Dramatiq); each wraps the async check logic in asyncio.run
+Actors are synchronous (Dramatiq); each wraps the async check logic in ``asyncio.run``
 with its own DB session and Redis client.
+
+Each worker thread runs its own event loop per ``asyncio.run``. Async SQLAlchemy
+engines are NOT safe to share a connection pool across event loops, so every actor
+invocation gets a fresh ``NullPool`` engine (``worker_session``) disposed on exit —
+otherwise pooled asyncpg connections bound to another thread's (closed) loop raise
+"attached to a different loop" / "Event loop is closed".
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 import dramatiq
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 import app.workers.broker  # noqa: F401 — ensures the broker is configured on import
-from app.db import SessionLocal, get_redis
+from app.config import settings
+from app.db import get_redis
 
 log = logging.getLogger("worker.checks")
+
+
+@asynccontextmanager
+async def worker_session():
+    """Yield a session from a per-invocation NullPool engine, disposed on exit."""
+    engine = create_async_engine(str(settings.database_url), poolclass=NullPool)
+    try:
+        maker = async_sessionmaker(engine, expire_on_commit=False)
+        async with maker() as session:
+            yield session
+    finally:
+        await engine.dispose()
 
 
 async def _run(check_type: str, domain_id: int) -> None:
     redis = get_redis()
     try:
-        async with SessionLocal() as session:
+        async with worker_session() as session:
             if check_type == "rdap":
                 from app.checks.expiry import run_expiry_check
 
@@ -57,7 +79,7 @@ def run_check(domain_id: int, check_type: str) -> None:
 async def _run_healthcheck(healthcheck_id: int) -> None:
     redis = get_redis()
     try:
-        async with SessionLocal() as session:
+        async with worker_session() as session:
             from app.checks.healthcheck import run_healthcheck as do_check
 
             outcome = await do_check(session, redis, healthcheck_id)
@@ -90,7 +112,7 @@ def run_healthcheck(healthcheck_id: int) -> None:
 async def _send_notification(channel_id: int, text: str, alert_event_id: int | None) -> None:
     redis = get_redis()
     try:
-        async with SessionLocal() as session:
+        async with worker_session() as session:
             from app.services import notifications as notif
 
             channel = await notif.get_channel(session, channel_id)
@@ -109,7 +131,7 @@ def send_notification(channel_id: int, text: str, alert_event_id: int | None = N
 
 
 async def _sync_registrar_account(account_id: int) -> None:
-    async with SessionLocal() as session:
+    async with worker_session() as session:
         from app.services import registrars as reg
 
         account = await reg.get_account(session, account_id)
