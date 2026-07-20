@@ -128,13 +128,14 @@ def make_domain() -> Callable[..., int]:
 
         async def create() -> int:
             norm = normalize_fqdn(fqdn)
+            field_sources = kwargs.pop("field_sources", {"fqdn": "manual"})
             async with SessionLocal() as s:
                 d = Domain(
                     project_id=project_id,
                     fqdn=norm.fqdn,
                     punycode=norm.punycode,
                     tld=norm.tld,
-                    field_sources={"fqdn": "manual"},
+                    field_sources=field_sources,
                     **kwargs,
                 )
                 s.add(d)

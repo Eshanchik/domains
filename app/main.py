@@ -18,6 +18,7 @@ from app.deps import NotAuthenticated
 from app.web import auth as web_auth
 from app.web import companies as web_companies
 from app.web import domains as web_domains
+from app.web import import_web
 from app.web import users as web_users
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(web_users.router)
     app.include_router(web_companies.router)
     app.include_router(web_domains.router)
+    app.include_router(import_web.router)
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
