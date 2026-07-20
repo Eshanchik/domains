@@ -12,8 +12,21 @@
   </head>
   <body class="min-h-screen bg-gray-50 text-gray-900">
     <header class="border-b bg-white">
-      <nav class="mx-auto max-w-6xl px-4 py-3">
-        <a href="/" class="font-semibold">DomainGuard</a>
+      <nav class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <div class="flex items-center gap-4">
+          <a href="/" class="font-semibold">DomainGuard</a>
+          {% if user and user.role.value == "admin" %}
+            <a href="/users" class="text-sm text-gray-600 hover:text-gray-900">Пользователи</a>
+          {% endif %}
+        </div>
+        {% if user %}
+          <div class="flex items-center gap-3 text-sm">
+            <span class="text-gray-600">{{ user.login }} ({{ user.role.value }})</span>
+            <form method="post" action="/logout">
+              <button type="submit" class="text-gray-600 hover:text-gray-900">Выйти</button>
+            </form>
+          </div>
+        {% endif %}
       </nav>
     </header>
     <main class="mx-auto max-w-6xl px-4 py-6">

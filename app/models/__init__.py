@@ -1,9 +1,11 @@
 """SQLAlchemy models package.
 
-Import model modules here so that ``app.db.Base.metadata`` is fully populated for
-Alembic autogeneration. Concrete models are added by later tasks (T02+).
+Importing the model modules here ensures every table is registered on
+``app.db.Base.metadata`` for Alembic autogeneration.
 """
 
-from app.db import Base  # noqa: F401  (re-exported for Alembic target metadata)
+from app.db import Base
+from app.models.audit import AuditLog
+from app.models.user import Role, User, UserScope
 
-__all__ = ["Base"]
+__all__ = ["Base", "User", "UserScope", "Role", "AuditLog"]

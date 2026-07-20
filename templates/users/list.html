@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Пользователи — DomainGuard{% endblock %}
+{% block content %}
+<div class="mb-4 flex items-center justify-between">
+  <h1 class="text-lg font-semibold">Пользователи</h1>
+  <a href="/users/new" class="rounded bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-700">
+    Добавить
+  </a>
+</div>
+<table class="w-full border-collapse text-sm">
+  <thead>
+    <tr class="border-b text-left text-gray-600">
+      <th class="py-2">ID</th>
+      <th class="py-2">Логин</th>
+      <th class="py-2">Email</th>
+      <th class="py-2">Роль</th>
+      <th class="py-2">Активен</th>
+      <th class="py-2">Скоупы</th>
+      <th class="py-2"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr class="border-b">
+      <td class="py-2">{{ u.id }}</td>
+      <td class="py-2">{{ u.login }}</td>
+      <td class="py-2">{{ u.email }}</td>
+      <td class="py-2">{{ u.role.value }}</td>
+      <td class="py-2">{{ "да" if u.is_active else "нет" }}</td>
+      <td class="py-2">
+        {% for s in u.scopes %}
+          {% if s.company_id %}company:{{ s.company_id }}{% endif %}
+          {% if s.project_id %}project:{{ s.project_id }}{% endif %}
+        {% endfor %}
+      </td>
+      <td class="py-2">
+        <a href="/users/{{ u.id }}/edit" class="text-blue-600 hover:underline">Изменить</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

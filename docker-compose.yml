@@ -8,6 +8,9 @@ x-app-env: &app-env
   DG_MASTER_KEY: ${DG_MASTER_KEY:-}
   ENVIRONMENT: ${ENVIRONMENT:-development}
   TIMEZONE: ${TIMEZONE:-Europe/Kyiv}
+  DG_ADMIN_EMAIL: ${DG_ADMIN_EMAIL:-admin@example.com}
+  DG_ADMIN_LOGIN: ${DG_ADMIN_LOGIN:-admin}
+  DG_ADMIN_PASSWORD: ${DG_ADMIN_PASSWORD:-}
 
 services:
   postgres:
