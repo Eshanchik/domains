@@ -25,6 +25,7 @@ async def registrars_page(
 ) -> HTMLResponse:
     accounts = await svc.list_accounts(session)
     unassigned = await svc.list_unassigned(session)
+    types = await svc.account_type_labels(session)
     return templates.TemplateResponse(
         request,
         "registrars/list.html",
@@ -33,6 +34,7 @@ async def registrars_page(
             "accounts": accounts,
             "unassigned_count": len(unassigned),
             "ip_of": svc.account_masked_ip,
+            "types": types,
         },
     )
 
@@ -55,6 +57,20 @@ async def registrar_create(
         username=username,
         client_ip=client_ip,
         actor_id=user.id,
+    )
+    return RedirectResponse("/registrars", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/registrars/godaddy")
+async def godaddy_create(
+    label: str = Form(...),
+    api_key: str = Form(...),
+    api_secret: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(admin_required),
+):
+    await svc.create_godaddy_account(
+        session, label=label, api_key=api_key, api_secret=api_secret, actor_id=user.id
     )
     return RedirectResponse("/registrars", status_code=status.HTTP_303_SEE_OTHER)
 

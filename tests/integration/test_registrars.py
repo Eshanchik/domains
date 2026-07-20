@@ -177,3 +177,21 @@ def test_assign_unassigned_creates_domain(make_company, make_project):
     dom, remaining = _run(run())
     assert dom is not None and dom.project_id == proj
     assert remaining == 0  # staging row removed
+
+
+def test_godaddy_account_dispatch(make_company, make_project):
+    """Creating a GoDaddy account wires build_account_connector to GoDaddyConnector."""
+
+    async def run():
+        from app.connectors.godaddy import GoDaddyConnector
+
+        async with SessionLocal() as s:
+            acc = await svc.create_godaddy_account(
+                s, label="gd", api_key="KEY", api_secret="SECRET", actor_id=None
+            )
+            conn = await svc.build_account_connector(s, acc)
+            return acc.credentials_enc, isinstance(conn, GoDaddyConnector)
+
+    enc, is_godaddy = _run(run())
+    assert "SECRET" not in enc  # creds encrypted
+    assert is_godaddy is True
