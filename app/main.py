@@ -16,6 +16,7 @@ from app.api import health
 from app.config import settings
 from app.deps import NotAuthenticated
 from app.web import auth as web_auth
+from app.web import channels as web_channels
 from app.web import companies as web_companies
 from app.web import domains as web_domains
 from app.web import healthchecks as web_healthchecks
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(import_web.router)
     app.include_router(settings_web.router)
     app.include_router(web_healthchecks.router)
+    app.include_router(web_channels.router)
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
