@@ -28,6 +28,21 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_object(obj, name, type_, reflected, compare_to) -> bool:
+    """Skip partitioned tables from autogenerate.
+
+    ``check_result`` and its monthly partitions (``check_result_YYYY_MM``) are
+    managed by a hand-written migration + a runtime partition helper, so autogenerate
+    must leave them alone.
+    """
+    if type_ == "table":
+        if name == "check_result" or name.startswith("check_result_"):
+            return False
+        if obj is not None and obj.info.get("skip_autogenerate"):
+            return False
+    return True
+
+
 def run_migrations_offline() -> None:
     """Emit SQL to stdout without a DBAPI connection (uses a sync-style URL)."""
     context.configure(
@@ -46,6 +61,7 @@ def _do_run_migrations(connection) -> None:
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
