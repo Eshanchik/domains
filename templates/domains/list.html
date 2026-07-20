@@ -11,23 +11,23 @@
 <div class="card card-p mb-5">
   <form method="get" action="/domains" class="flex flex-wrap items-end gap-2 text-sm">
     <input name="q" value="{{ f.q or '' }}" placeholder="Поиск по домену" class="input w-56" />
-    <select name="company_id" class="select w-auto">
+    <select name="company_id" class="select w-auto" onchange="this.form.requestSubmit()">
       <option value="">Все компании</option>
       {% for c in companies %}<option value="{{ c.id }}" {{ 'selected' if f.company_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
     </select>
-    <select name="project_id" class="select w-auto">
+    <select name="project_id" class="select w-auto" onchange="this.form.requestSubmit()">
       <option value="">Все проекты</option>
       {% for p in projects %}<option value="{{ p.id }}" {{ 'selected' if f.project_id == p.id else '' }}>{{ p.name }}</option>{% endfor %}
     </select>
-    <select name="tag" class="select w-auto">
+    <select name="tag" class="select w-auto" onchange="this.form.requestSubmit()">
       <option value="">Все теги</option>
       {% for t in tags %}<option value="{{ t.name }}" {{ 'selected' if f.tag == t.name else '' }}>{{ t.name }}</option>{% endfor %}
     </select>
-    <select name="expiring" class="select w-auto">
+    <select name="expiring" class="select w-auto" onchange="this.form.requestSubmit()">
       <option value="">Истекает: любой</option>
       {% for d in [7, 30, 90] %}<option value="{{ d }}" {{ 'selected' if f.expiring == d else '' }}>≤ {{ d }} дн.</option>{% endfor %}
     </select>
-    <label class="inline-flex items-center gap-1.5 px-1 text-slate-600 dark:text-slate-300"><input type="checkbox" name="archived" value="true" class="checkbox" {{ 'checked' if f.archived else '' }} /> архив</label>
+    <label class="inline-flex items-center gap-1.5 px-1 text-slate-600 dark:text-slate-300"><input type="checkbox" name="archived" value="true" class="checkbox" onchange="this.form.requestSubmit()" {{ 'checked' if f.archived else '' }} /> архив</label>
     <button type="submit" class="btn btn-secondary btn-sm">{{ ui.icon("filter", "h-4 w-4") }}Фильтр</button>
     <a href="/domains/export.csv?{{ request.url.query }}" class="btn btn-secondary btn-sm">{{ ui.icon("download", "h-4 w-4") }}Экспорт CSV</a>
   </form>

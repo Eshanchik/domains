@@ -284,3 +284,28 @@ def test_check_now_endpoint_enqueues_admin_only(
     resp = client.post(f"/domains/{did}/check", follow_redirects=False)
     assert resp.status_code == 303
     assert sorted(sent) == sorted((did, t) for t in ("rdap", "ssl", "vt", "dns"))
+
+
+# --- T26: filter applies + explicit empty state -------------------------------
+
+
+def test_filter_empty_project_shows_empty_state(
+    client, make_user, make_company, make_project, make_domain
+) -> None:
+    acme = make_company(code="acme")
+    with_domains = make_project(acme, code="web")
+    empty = make_project(acme, code="blog")
+    make_domain(with_domains, fqdn="has-domain.com")
+    _admin(client, make_user)
+
+    # A project with no domains renders the explicit empty state, not a stale list.
+    page = client.get(f"/domains?project_id={empty}")
+    assert page.status_code == 200
+    assert "Домены не найдены." in page.text
+    assert "has-domain.com" not in page.text
+
+    # The populated project shows only its own domain.
+    page2 = client.get(f"/domains?project_id={with_domains}")
+    assert page2.status_code == 200
+    assert "has-domain.com" in page2.text
+    assert "Домены не найдены." not in page2.text
