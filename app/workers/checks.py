@@ -70,9 +70,16 @@ async def _run(check_type: str, domain_id: int) -> None:
             # Evaluate alert rules for this check and dispatch instant alerts.
             from app.services.alerts import evaluate_after_check
 
-            await evaluate_after_check(session, redis, domain_id, check_type)
+            events = await evaluate_after_check(session, redis, domain_id, check_type)
+            _fan_out_webhooks(events)
     finally:
         await redis.aclose()
+
+
+def _fan_out_webhooks(events) -> None:
+    """Enqueue outgoing-webhook delivery for each newly-created alert event."""
+    for event in events or []:
+        deliver_webhooks.send(event.id)
 
 
 @dramatiq.actor(max_retries=3, queue_name="checks")
@@ -101,9 +108,10 @@ async def _run_healthcheck(healthcheck_id: int) -> None:
 
                 hc = await session.get(HealthCheck, healthcheck_id)
                 if hc is not None:
-                    await evaluate_after_healthcheck(
+                    events = await evaluate_after_healthcheck(
                         session, redis, hc.domain_id, healthcheck_id, outcome.transition
                     )
+                    _fan_out_webhooks(events)
     finally:
         await redis.aclose()
 
@@ -156,3 +164,20 @@ async def _sync_registrar_account(account_id: int) -> None:
 def sync_registrar_account(account_id: int) -> None:
     """Pull domains from a registrar account (manual or periodic)."""
     asyncio.run(_sync_registrar_account(account_id))
+
+
+async def _deliver_webhooks(event_id: int) -> None:
+    async with worker_session() as session:
+        from app.models.alert import AlertEvent
+        from app.services import webhooks
+
+        event = await session.get(AlertEvent, event_id)
+        if event is not None:
+            n = await webhooks.deliver(session, event)
+            log.info("webhook delivery event=%s → %d endpoints", event_id, n)
+
+
+@dramatiq.actor(max_retries=3, queue_name="notifications")
+def deliver_webhooks(event_id: int) -> None:
+    """POST an alert event to all matching outgoing webhook endpoints."""
+    asyncio.run(_deliver_webhooks(event_id))

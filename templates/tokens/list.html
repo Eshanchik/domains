@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}API-токены — DomainGuard{% endblock %}
+{% block content %}
+<h1 class="mb-4 text-lg font-semibold">API-токены</h1>
+
+{% if new_token %}
+<div class="mb-4 rounded border border-green-300 bg-green-50 px-3 py-2 text-sm">
+  <p class="mb-1 text-green-800">Токен создан. Скопируйте его — он показывается только один раз:</p>
+  <code class="block break-all rounded bg-white px-2 py-1 font-mono">{{ new_token }}</code>
+  <p class="mt-1 text-xs text-gray-500">Использование: <code>Authorization: Bearer {{ new_token }}</code></p>
+</div>
+{% endif %}
+
+<table class="mb-6 w-full border-collapse text-sm">
+  <thead>
+    <tr class="border-b text-left text-gray-600">
+      <th class="py-2">Название</th><th class="py-2">Префикс</th><th class="py-2">Активен</th>
+      <th class="py-2">Создан</th><th class="py-2">Использован</th><th class="py-2"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tokens %}
+    <tr class="border-b">
+      <td class="py-2">{{ t.name }}</td>
+      <td class="py-2 font-mono">{{ t.prefix }}…</td>
+      <td class="py-2">{{ 'да' if t.is_active else 'отозван' }}</td>
+      <td class="py-2">{{ t.created_at.strftime('%Y-%m-%d') }}</td>
+      <td class="py-2">{{ t.last_used_at.strftime('%Y-%m-%d %H:%M') if t.last_used_at else '—' }}</td>
+      <td class="py-2">
+        {% if t.is_active %}
+        <form method="post" action="/tokens/{{ t.id }}/revoke" class="inline" onsubmit="return confirm('Отозвать токен?');">
+          <button class="text-red-600 hover:underline">Отозвать</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="py-4 text-gray-500">Токенов нет.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2 class="mb-2 text-sm font-medium text-gray-600">Создать токен</h2>
+<form method="post" action="/tokens" class="flex max-w-md gap-2">
+  <input name="name" required placeholder="Название (напр. ci-script)" class="w-full rounded border px-3 py-2" />
+  <button type="submit" class="whitespace-nowrap rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Создать</button>
+</form>
+<p class="mt-2 text-xs text-gray-500">REST API: <code>GET /api/v1/domains</code>, <code>/api/v1/alerts</code>, <code>/api/v1/me</code>.</p>
+{% endblock %}
