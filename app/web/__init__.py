@@ -1,0 +1,1 @@
+"""HTML (HTMX) page routers."""
