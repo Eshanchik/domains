@@ -16,6 +16,7 @@ from sqlalchemy import text
 from app.core.security import hash_password
 from app.db import SessionLocal, engine, get_redis
 from app.models import Base
+from app.models.company import Company, Project
 from app.models.user import Role, User, UserScope
 
 
@@ -41,7 +42,10 @@ def _clean_state():
     async def clean() -> None:
         async with engine.begin() as conn:
             await conn.execute(
-                text("TRUNCATE users, user_scopes, audit_log RESTART IDENTITY CASCADE")
+                text(
+                    "TRUNCATE users, user_scopes, audit_log, companies, projects, tags "
+                    "RESTART IDENTITY CASCADE"
+                )
             )
         redis = get_redis()
         try:
@@ -80,6 +84,38 @@ def make_user() -> Callable[..., dict]:
 
         uid = _run(create())
         return {"id": uid, "login": login, "password": password, "role": role}
+
+    return _make
+
+
+@pytest.fixture
+def make_company() -> Callable[..., int]:
+    def _make(code: str = "acme", name: str | None = None) -> int:
+        async def create() -> int:
+            async with SessionLocal() as s:
+                c = Company(code=code, name=name or code.upper())
+                s.add(c)
+                await s.commit()
+                await s.refresh(c)
+                return c.id
+
+        return _run(create())
+
+    return _make
+
+
+@pytest.fixture
+def make_project() -> Callable[..., int]:
+    def _make(company_id: int, code: str = "web", name: str | None = None) -> int:
+        async def create() -> int:
+            async with SessionLocal() as s:
+                p = Project(company_id=company_id, code=code, name=name or code)
+                s.add(p)
+                await s.commit()
+                await s.refresh(p)
+                return p.id
+
+        return _run(create())
 
     return _make
 

@@ -62,8 +62,11 @@ class UserScope(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    # FKs to companies/projects are added in T03 when those tables exist.
-    company_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
-    project_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    company_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     user: Mapped[User] = relationship(back_populates="scopes")

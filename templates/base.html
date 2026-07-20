@@ -15,6 +15,11 @@
       <nav class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <div class="flex items-center gap-4">
           <a href="/" class="font-semibold">DomainGuard</a>
+          {% if user %}
+            <a href="/companies" class="text-sm text-gray-600 hover:text-gray-900">Компании</a>
+            <a href="/projects" class="text-sm text-gray-600 hover:text-gray-900">Проекты</a>
+            <a href="/tags" class="text-sm text-gray-600 hover:text-gray-900">Теги</a>
+          {% endif %}
           {% if user and user.role.value == "admin" %}
             <a href="/users" class="text-sm text-gray-600 hover:text-gray-900">Пользователи</a>
           {% endif %}

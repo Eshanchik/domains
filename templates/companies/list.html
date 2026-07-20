@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Компании — DomainGuard{% endblock %}
+{% block content %}
+<div class="mb-4 flex items-center justify-between">
+  <h1 class="text-lg font-semibold">Компании</h1>
+  {% if user.role.value == "admin" %}
+    <a href="/companies/new" class="rounded bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-700">Добавить</a>
+  {% endif %}
+</div>
+<table class="w-full border-collapse text-sm">
+  <thead>
+    <tr class="border-b text-left text-gray-600">
+      <th class="py-2">Название</th>
+      <th class="py-2">Код</th>
+      <th class="py-2">Проектов</th>
+      {% if user.role.value == "admin" %}<th class="py-2"></th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in companies %}
+    <tr class="border-b">
+      <td class="py-2">{{ c.name }}</td>
+      <td class="py-2 font-mono">{{ c.code }}</td>
+      <td class="py-2">{{ c.projects | length }}</td>
+      {% if user.role.value == "admin" %}
+      <td class="py-2">
+        <a href="/companies/{{ c.id }}/edit" class="text-blue-600 hover:underline">Изменить</a>
+        <form method="post" action="/companies/{{ c.id }}/delete" class="ml-2 inline"
+              onsubmit="return confirm('Удалить компанию «{{ c.name }}» и все её проекты?');">
+          <button type="submit" class="text-red-600 hover:underline">Удалить</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="py-4 text-gray-500">Нет компаний.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -90,7 +90,9 @@ def test_viewer_cannot_access_user_admin(client, make_user) -> None:
     assert resp.status_code == 403
 
 
-def test_admin_creates_user_and_writes_audit(client, make_user) -> None:
+def test_admin_creates_user_and_writes_audit(client, make_user, make_company, make_project) -> None:
+    company_id = make_company(code="acme")
+    project_id = make_project(company_id, code="web")
     make_user(login="root", password="password123", role=Role.admin)
     client.post("/login", data={"login": "root", "password": "password123"})
 
@@ -103,7 +105,7 @@ def test_admin_creates_user_and_writes_audit(client, make_user) -> None:
             "login": "newbie",
             "password": "password123",
             "role": "manager",
-            "scopes": "company:3\nproject:9",
+            "scopes": f"company:{company_id}\nproject:{project_id}",
         },
         follow_redirects=False,
     )
