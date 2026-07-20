@@ -31,8 +31,8 @@ def test_backfill_creates_default_schedules(make_company, make_project, make_dom
             return created, total, created2
 
     created, total, created2 = _run(run())
-    assert created == 6  # 2 domains × 3 default types
-    assert total == 6
+    assert created == 8  # 2 domains × 4 default types (rdap, ssl, vt, dns)
+    assert total == 8
     assert created2 == 0
 
 

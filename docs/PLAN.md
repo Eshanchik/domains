@@ -295,7 +295,14 @@
   godaddy, build_account_connector по registrar.connector_type); UI /registrars —
   отдельная форма GoDaddy + колонка «Регистратор». Тесты: 153 (godaddy parse/
   pagination/auth/sso-key header, dispatch на GoDaddyConnector, creds зашифрованы).
-- [ ] **T19. DNS/NS-мониторинг** (резолвинг A/AAAA/NS/MX, алерт на смену NS).
+- [x] **T19. DNS/NS-мониторинг** (резолвинг A/AAAA/NS/MX, алерт на смену NS). _(2026-07-21)_
+  `checks/dns_check` (dnspython async, резолв A/AAAA/NS/MX, снапшот в check_result
+  type='dns', пусто→stale); `alerts.evaluate_dns` (сравнение NS последних двух
+  снапшотов → событие `ns_change` high, дедуп по новому NS-набору, прошлое
+  резолвится) + RU-шаблон; тип `dns` добавлен в актор-диспатч, scheduler
+  DEFAULT_TYPES и интервалы (1 день). Тесты: 157 (снапшот, ns_change→high alert,
+  стабильные NS→без алерта, unresolvable→stale). Без миграции (dns — строковое
+  значение enum).
 - [ ] **T20. Каналы Slack, Discord, generic Webhook.**
 - [ ] **T21. API-токены + исходящие вебхуки на события.**
 - [ ] **T22. 2FA (TOTP) для admin; наблюдаемость (Grafana-дэшборды).**

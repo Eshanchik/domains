@@ -159,6 +159,43 @@ async def evaluate_vt(
     return [event] if created else []
 
 
+async def evaluate_dns(
+    session: AsyncSession, domain: Domain, *, now: datetime | None = None
+) -> list[AlertEvent]:
+    """Fire an ns_change alert if the latest DNS snapshot's NS set differs from the
+    previous one (SPEC FR-CK-5). Each distinct new NS set fires once; the previous
+    ns_change event is resolved."""
+    ts = now or datetime.now(UTC)
+    from app.models.check_result import CheckResult
+
+    result = await session.execute(
+        select(CheckResult.data_json)
+        .where(CheckResult.domain_id == domain.id, CheckResult.type == "dns")
+        .order_by(CheckResult.checked_at.desc())
+        .limit(2)
+    )
+    snapshots = [row[0] or {} for row in result.all()]
+    if len(snapshots) < 2:
+        return []  # first snapshot — nothing to compare
+    new_ns = sorted(snapshots[0].get("ns") or [])
+    old_ns = sorted(snapshots[1].get("ns") or [])
+    if not new_ns or new_ns == old_ns:
+        return []
+
+    key = f"{domain.id}:ns_change:{'|'.join(new_ns)}"
+    event, created = await _ensure_active(
+        session,
+        domain_id=domain.id,
+        kind="ns_change",
+        dedupe_key=key,
+        severity="high",
+        payload={"old_ns": old_ns, "new_ns": new_ns},
+        now=ts,
+    )
+    await _resolve(session, domain_id=domain.id, kind="ns_change", keep_key=key, now=ts)
+    return [event] if created else []
+
+
 async def evaluate_health(
     session: AsyncSession,
     domain_id: int,
@@ -200,6 +237,8 @@ def build_message(event: AlertEvent, domain: Domain) -> str:
         return f"🚨 VirusTotal: {fqdn} — вредоносный ({p.get('malicious')} детектов)."
     if event.kind == "health_down":
         return f"🔴 Health-check {fqdn} недоступен (check #{p.get('healthcheck_id')})."
+    if event.kind == "ns_change":
+        return f"🛡️ Сменились NS домена {fqdn}: {', '.join(p.get('new_ns') or [])} (было: {', '.join(p.get('old_ns') or [])})."
     return f"Событие по домену {fqdn}: {event.kind}"
 
 
@@ -279,6 +318,8 @@ async def evaluate_after_check(
     elif check_type == "vt":
         malicious = await _latest_vt_malicious(session, domain_id)
         events = await evaluate_vt(session, domain, malicious, now=now)
+    elif check_type == "dns":
+        events = await evaluate_dns(session, domain, now=now)
     else:
         return []
     await session.commit()
