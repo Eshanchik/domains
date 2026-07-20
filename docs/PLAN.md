@@ -126,10 +126,20 @@
   manual-preserve). Проверено в Docker на реальном RDAP: everness.online →
   expiry 2027-01-29, NS Cloudflare, source=rdap, check_result записан.
 
-- [ ] **T08. Проверка SSL.**
+- [x] **T08. Проверка SSL.** _(2026-07-20)_
   Хосты: apex + www + ssl_extra_hosts; получение серта (даты, издатель, SAN,
   ошибки цепочки); SslCertificate + CheckResult; ежедневное расписание.
   Тесты: мок TLS-эндпоинтов, истёкший/самоподписанный/недоступный.
+  _Сделано:_ `checks/ssl_check` — `hosts_for` (apex+www+extra, punycode, дедуп),
+  `_fetch_der` (unverified handshake для получения серта даже при ошибке +
+  отдельный verifying handshake для chain/verify-ошибки; network-seam для моков),
+  `parse_cert` (cryptography: issuer/valid_from/valid_to/SAN), `check_host`
+  (expired→fail, verify/handshake/unreachable→warn, иначе ok), `run_ssl_check`
+  (токен-бакет, per-host SslCertificate + summary CheckResult, overall=worst);
+  модель SslCertificate (+миграция); актор диспатчит ssl. Тесты: 92 (parse/hosts
+  unit; valid→ok, expired→fail, self-signed→warn, unreachable→warn+записан).
+  Проверено в Docker на реальном TLS: everness.online + www → серт Google Trust
+  Services, valid_to 2026-08-25, status ok.
 
 - [ ] **T09. VirusTotal.**
   Клиент `GET /domains/{fqdn}`; глобальная очередь под бюджет free-ключа

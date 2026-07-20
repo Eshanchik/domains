@@ -19,6 +19,7 @@ dependencies = [
     "idna>=3.6",
     "dramatiq[redis]>=1.17",
     "python-whois>=0.9.4",
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]
