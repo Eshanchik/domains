@@ -10,7 +10,7 @@ case "$role" in
     exec uvicorn app.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"
     ;;
   worker)
-    exec python -m app.workers.main
+    exec dramatiq app.workers.checks --processes "${WORKER_PROCESSES:-1}" --threads "${WORKER_THREADS:-4}"
     ;;
   scheduler)
     exec python -m app.scheduler.main
