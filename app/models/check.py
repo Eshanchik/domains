@@ -21,6 +21,7 @@ class CheckType(enum.StrEnum):
     whois = "whois"
     ssl = "ssl"
     vt = "vt"
+    dns = "dns"
     healthcheck = "healthcheck"
 
 

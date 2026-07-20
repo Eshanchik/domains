@@ -26,11 +26,12 @@ INTERVALS: dict[CheckType, timedelta] = {
     CheckType.whois: timedelta(days=1),
     CheckType.ssl: timedelta(days=1),
     CheckType.vt: timedelta(days=7),
+    CheckType.dns: timedelta(days=1),
     CheckType.healthcheck: timedelta(minutes=15),
 }
 
 # Types every domain gets by default (health-checks are per-URL, added in T10).
-DEFAULT_TYPES = (CheckType.rdap, CheckType.ssl, CheckType.vt)
+DEFAULT_TYPES = (CheckType.rdap, CheckType.ssl, CheckType.vt, CheckType.dns)
 
 
 def _default_send(domain_id: int, check_type: str) -> None:

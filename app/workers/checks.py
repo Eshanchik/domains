@@ -58,6 +58,11 @@ async def _run(check_type: str, domain_id: int) -> None:
 
                 status = await run_vt_check(session, redis, domain_id)
                 log.info("vt check domain=%s → %s", domain_id, status)
+            elif check_type == "dns":
+                from app.checks.dns_check import run_dns_check
+
+                status = await run_dns_check(session, redis, domain_id)
+                log.info("dns check domain=%s → %s", domain_id, status)
             else:
                 log.info("check type %s not implemented yet (domain=%s)", check_type, domain_id)
                 return
