@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Регистраторы — DomainGuard{% endblock %}
+{% block content %}
+<div class="mb-4 flex items-center justify-between">
+  <h1 class="text-lg font-semibold">Аккаунты регистраторов</h1>
+  <a href="/unassigned" class="text-sm text-blue-600 hover:underline">Неразобранные ({{ unassigned_count }})</a>
+</div>
+
+<table class="mb-6 w-full border-collapse text-sm">
+  <thead>
+    <tr class="border-b text-left text-gray-600">
+      <th class="py-2">Метка</th><th class="py-2">Client IP</th><th class="py-2">Статус</th>
+      <th class="py-2">Последний синк</th><th class="py-2"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for a in accounts %}
+    <tr class="border-b">
+      <td class="py-2">{{ a.label }}</td>
+      <td class="py-2 font-mono">{{ ip_of(a) or '—' }}</td>
+      <td class="py-2"><span class="{{ 'text-red-700' if a.status=='error' else 'text-green-700' }}">{{ a.status }}</span>
+        {% if a.last_error %}<span class="text-xs text-gray-400">{{ a.last_error[:40] }}</span>{% endif %}
+      </td>
+      <td class="py-2">{{ a.last_sync_at.strftime('%Y-%m-%d %H:%M') if a.last_sync_at else '—' }}</td>
+      <td class="py-2">
+        <form method="post" action="/registrars/{{ a.id }}/sync" class="inline"><button class="text-blue-600 hover:underline">Синк</button></form>
+        <form method="post" action="/registrars/{{ a.id }}/delete" class="ml-2 inline" onsubmit="return confirm('Удалить аккаунт?');"><button class="text-red-600 hover:underline">Удалить</button></form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="py-4 text-gray-500">Аккаунтов нет.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2 class="mb-2 text-sm font-medium text-gray-600">Добавить аккаунт Namecheap</h2>
+<p class="mb-2 text-xs text-gray-500">Ключи хранятся зашифрованными. Требуется whitelist IP сервера в Namecheap.</p>
+<form method="post" action="/registrars" class="grid max-w-lg grid-cols-2 gap-2 text-sm">
+  <label>Метка<input name="label" required class="mt-1 w-full rounded border px-2 py-1" /></label>
+  <label>ApiUser<input name="api_user" required class="mt-1 w-full rounded border px-2 py-1" /></label>
+  <label>UserName<input name="username" required class="mt-1 w-full rounded border px-2 py-1" /></label>
+  <label>ApiKey<input name="api_key" type="password" required class="mt-1 w-full rounded border px-2 py-1" /></label>
+  <label>Client IP (whitelisted)<input name="client_ip" required class="mt-1 w-full rounded border px-2 py-1 font-mono" /></label>
+  <div class="col-span-2"><button type="submit" class="rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Добавить</button></div>
+</form>
+{% endblock %}

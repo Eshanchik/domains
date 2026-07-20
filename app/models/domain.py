@@ -41,9 +41,12 @@ class Domain(Base):
     punycode: Mapped[str] = mapped_column(String(253), index=True)
     tld: Mapped[str] = mapped_column(String(63), index=True)
 
-    # Registrar linkage — FKs added in T16.
-    registrar_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
-    registrar_account_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    registrar_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("registrars.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    registrar_account_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("registrar_accounts.id", ondelete="SET NULL"), nullable=True
+    )
 
     registration_date: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

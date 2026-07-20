@@ -13,7 +13,12 @@ from zoneinfo import ZoneInfo
 from app.config import settings
 from app.db import SessionLocal, get_redis
 from app.log import configure_logging
-from app.scheduler.service import backfill_schedules, enqueue_due, enqueue_due_healthchecks
+from app.scheduler.service import (
+    backfill_schedules,
+    enqueue_due,
+    enqueue_due_healthchecks,
+    enqueue_due_registrar_syncs,
+)
 
 KYIV = ZoneInfo(settings.timezone)
 
@@ -50,11 +55,14 @@ async def _run() -> None:
                             log.info("backfilled %d schedules", created)
                     dispatched = await enqueue_due(session, redis)
                     hc_dispatched = await enqueue_due_healthchecks(session, redis)
+                    synced = await enqueue_due_registrar_syncs(session, redis)
                     digested = await _run_digests(session, redis)
                 if dispatched:
                     log.info("enqueued %d checks", len(dispatched))
                 if hc_dispatched:
                     log.info("enqueued %d health-checks", len(hc_dispatched))
+                if synced:
+                    log.info("enqueued %d registrar syncs", len(synced))
                 if digested:
                     log.info("sent %d digests", len(digested))
             except Exception:  # noqa: BLE001 — never let the loop die

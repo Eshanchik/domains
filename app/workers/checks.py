@@ -106,3 +106,26 @@ async def _send_notification(channel_id: int, text: str, alert_event_id: int | N
 def send_notification(channel_id: int, text: str, alert_event_id: int | None = None) -> None:
     """Deliver a message to a channel (used by the alerter/digest)."""
     asyncio.run(_send_notification(channel_id, text, alert_event_id))
+
+
+async def _sync_registrar_account(account_id: int) -> None:
+    async with SessionLocal() as session:
+        from app.services import registrars as reg
+
+        account = await reg.get_account(session, account_id)
+        if account is None:
+            return
+        report = await reg.sync_account(session, account)
+        log.info(
+            "registrar sync account=%s updated=%s staged=%s error=%s",
+            account_id,
+            report.updated,
+            report.staged,
+            report.error,
+        )
+
+
+@dramatiq.actor(max_retries=2, queue_name="sync")
+def sync_registrar_account(account_id: int) -> None:
+    """Pull domains from a registrar account (manual or periodic)."""
+    asyncio.run(_sync_registrar_account(account_id))
