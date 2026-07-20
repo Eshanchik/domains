@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% import "_components.html" as ui %}
+{% block title %}Алерт · {{ domain.fqdn }} — DomainGuard{% endblock %}
+{% block content %}
+{% call ui.page_header("Алерт: " ~ event.kind) %}
+  <a href="/alerts" class="btn btn-ghost btn-sm">← К списку</a>
+  {% if user.role.value in ("admin", "manager") and event.state == "active" %}
+  <form method="post" action="/alerts/{{ event.id }}/resolve" onsubmit="return confirm('Отметить алерт как решённый?');">
+    <button type="submit" class="btn btn-primary btn-sm">Резолв</button>
+  </form>
+  {% endif %}
+{% endcall %}
+
+<div class="card card-p mb-6">
+  <dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3">
+    <div><dt class="muted">Домен</dt><dd class="mt-0.5"><a href="/domains/{{ domain.id }}" class="link font-mono">{{ domain.fqdn }}</a></dd></div>
+    <div><dt class="muted">Тип</dt><dd class="mt-0.5">{{ event.kind }}</dd></div>
+    <div><dt class="muted">Severity</dt><dd class="mt-0.5">{{ ui.status_badge(event.severity) }}</dd></div>
+    <div><dt class="muted">Состояние</dt><dd class="mt-0.5">{% if event.state == "active" %}{{ ui.badge("активен", "red") }}{% else %}{{ ui.badge("решён", "green") }}{% endif %}</dd></div>
+    <div><dt class="muted">Сработал</dt><dd class="mt-0.5">{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</dd></div>
+    <div><dt class="muted">Решён</dt><dd class="mt-0.5">{{ event.resolved_at.strftime('%Y-%m-%d %H:%M') if event.resolved_at else '—' }}</dd></div>
+  </dl>
+</div>
+
+{# Payload: thresholds / observed values captured when the alert fired #}
+<section class="mb-6">
+  <h2 class="section-title">Детали события</h2>
+  <div class="card card-p">
+    {% if event.payload_json %}
+    <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+      {% for key, value in event.payload_json.items() %}
+      <div class="flex justify-between gap-4 border-b border-slate-100 py-1 dark:border-slate-800/70">
+        <dt class="muted font-mono">{{ key }}</dt>
+        <dd class="text-right">{{ value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% else %}
+    <p class="text-sm muted">Дополнительных данных нет.</p>
+    {% endif %}
+  </div>
+</section>
+
+{# Recent checks for the same domain, for context #}
+<section>
+  <h2 class="section-title">Последние проверки домена</h2>
+  <div class="card overflow-x-auto">
+    <table class="dg-table">
+      <thead><tr><th>Когда</th><th>Тип</th><th>Статус</th></tr></thead>
+      <tbody>
+        {% for c in recent_checks %}
+        <tr>
+          <td>{{ c.checked_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ c.type }}</td>
+          <td>{{ ui.status_badge(c.status) }}</td>
+        </tr>
+        {% else %}
+        {{ ui.empty_row(3, "Проверок пока нет.") }}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

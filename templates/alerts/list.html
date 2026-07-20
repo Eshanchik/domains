@@ -7,19 +7,20 @@
   <table class="dg-table">
     <thead>
       <tr>
-        <th>Домен</th><th>Тип</th><th>Severity</th><th>Когда</th>
+        <th>Домен</th><th>Тип</th><th>Severity</th><th>Когда</th><th></th>
       </tr>
     </thead>
     <tbody>
       {% for event, fqdn in rows %}
-      <tr>
-        <td class="font-mono">{{ fqdn }}</td>
+      <tr class="cursor-pointer" onclick="location='/alerts/{{ event.id }}'">
+        <td class="font-mono"><a href="/alerts/{{ event.id }}" class="link">{{ fqdn }}</a></td>
         <td>{{ event.kind }}</td>
         <td>{{ ui.status_badge(event.severity) }}</td>
         <td>{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="text-right"><a href="/alerts/{{ event.id }}" class="link">Детали →</a></td>
       </tr>
       {% else %}
-      {{ ui.empty_row(4, "Активных алертов нет.") }}
+      {{ ui.empty_row(5, "Активных алертов нет.") }}
       {% endfor %}
     </tbody>
   </table>
