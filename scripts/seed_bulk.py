@@ -1,5 +1,8 @@
 """Generate N synthetic domains for performance testing (SPEC NFR-2, T14 acceptance).
 
+DEV ONLY — inserts fake domains and must never run against production. Guarded to
+refuse when ENVIRONMENT=production unless DG_ALLOW_SEED=1 is set explicitly.
+
 Spreads expiry dates so some fall in the 7/30/90-day windows. Uses a batched core
 insert for speed.
 
@@ -10,11 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import insert, select
 
+from app.config import settings
 from app.db import SessionLocal
 from app.log import configure_logging
 from app.models.company import Project
@@ -65,6 +70,9 @@ async def _run(total: int) -> None:
 
 def main() -> None:
     configure_logging()
+    if settings.environment == "production" and os.getenv("DG_ALLOW_SEED") != "1":
+        log.error("refusing to seed production data (set DG_ALLOW_SEED=1 to override)")
+        sys.exit(2)
     total = int(sys.argv[1]) if len(sys.argv) > 1 else 10000
     asyncio.run(_run(total))
 
