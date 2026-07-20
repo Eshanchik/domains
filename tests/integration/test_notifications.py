@@ -191,3 +191,74 @@ def test_channel_config_is_encrypted():
 
     raw = _run(fetch_raw())
     assert "-100777" not in raw  # chat_id stored encrypted, not plaintext
+
+
+def test_send_via_slack_webhook():
+    import httpx
+
+    hook = "https://hooks.slack.example/T/B/xyz"
+
+    async def _mk():
+        async with SessionLocal() as s:
+            ch = await svc.create_channel_typed(
+                s,
+                type="slack",
+                name="slack",
+                config={"webhook_url": hook},
+                company_id=None,
+                project_id=None,
+                is_default=True,
+                mode="both",
+                digest_time=None,
+                actor_id=None,
+            )
+            return ch.id
+
+    cid = _run(_mk())
+    router = respx.mock(assert_all_called=False)
+    router.post(hook).mock(return_value=httpx.Response(200))
+
+    async def run():
+        redis = get_redis()
+        try:
+            with router:
+                async with SessionLocal() as s:
+                    channel = await svc.get_channel(s, cid)
+                    ok = await svc.send_to_channel(s, redis, channel, "hi")
+            async with SessionLocal() as s:
+                sent = (
+                    await s.execute(
+                        select(func.count())
+                        .select_from(NotificationLog)
+                        .where(NotificationLog.delivery_status == "sent")
+                    )
+                ).scalar_one()
+            return ok, sent
+        finally:
+            await redis.aclose()
+
+    ok, sent = _run(run())
+    assert ok is True
+    assert sent == 1
+
+
+def test_channel_target_hides_webhook_token():
+    async def _mk():
+        async with SessionLocal() as s:
+            ch = await svc.create_channel_typed(
+                s,
+                type="discord",
+                name="d",
+                config={"webhook_url": "https://discord.com/api/webhooks/123/SECRETTOKEN"},
+                company_id=None,
+                project_id=None,
+                is_default=True,
+                mode="both",
+                digest_time=None,
+                actor_id=None,
+            )
+            return ch
+
+    ch = _run(_mk())
+    target = svc.channel_target(ch)
+    assert target == "discord.com"  # host only, token hidden

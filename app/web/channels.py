@@ -33,7 +33,7 @@ async def channels_list(
             "companies": await companies_svc.list_companies(session, user),
             "projects": await companies_svc.list_projects(session, user),
             "test_result": test,
-            "chat_id_of": svc.channel_chat_id,
+            "target_of": svc.channel_target,
         },
     )
 
@@ -41,7 +41,9 @@ async def channels_list(
 @router.post("")
 async def channel_create(
     name: str = Form(...),
-    chat_id: str = Form(...),
+    type: str = Form("telegram"),
+    chat_id: str = Form(""),
+    webhook_url: str = Form(""),
     scope: str = Form("global"),  # "global" | "company:<id>" | "project:<id>"
     mode: str = Form("both"),
     digest_time: str = Form(""),
@@ -54,10 +56,18 @@ async def channel_create(
         company_id = int(scope.split(":", 1)[1])
     elif scope.startswith("project:"):
         project_id = int(scope.split(":", 1)[1])
-    await svc.create_channel(
+
+    ctype = type if type in svc.CHANNEL_TYPES else "telegram"
+    config = (
+        {"chat_id": chat_id.strip()}
+        if ctype == "telegram"
+        else {"webhook_url": webhook_url.strip()}
+    )
+    await svc.create_channel_typed(
         session,
+        type=ctype,
         name=name,
-        chat_id=chat_id,
+        config=config,
         company_id=company_id,
         project_id=project_id,
         is_default=is_default,

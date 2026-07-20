@@ -303,7 +303,14 @@
   DEFAULT_TYPES и интервалы (1 день). Тесты: 157 (снапшот, ns_change→high alert,
   стабильные NS→без алерта, unresolvable→stale). Без миграции (dns — строковое
   значение enum).
-- [ ] **T20. Каналы Slack, Discord, generic Webhook.**
+- [x] **T20. Каналы Slack, Discord, generic Webhook.** _(2026-07-21)_
+  `channels/webhook` (Slack `{text}`, Discord `{content}`, generic `{text}`; общий
+  POST, 429/5xx→transient, 4xx→ChannelError); сервис уведомлений обобщён:
+  `create_channel_typed` + `channel_config`/`channel_target`, `_build_impl`
+  диспатчит по типу канала (telegram/slack/discord/webhook), URL вебхука шифруется;
+  UI /channels — селектор типа + поле webhook_url, показ типа/назначения (host
+  без токена). Тесты: 166 (payload-формы, success/204/429-500-503→transient/4xx,
+  отправка через slack-вебхук, скрытие токена в target). Без миграции.
 - [ ] **T21. API-токены + исходящие вебхуки на события.**
 - [ ] **T22. 2FA (TOTP) для admin; наблюдаемость (Grafana-дэшборды).**
 
