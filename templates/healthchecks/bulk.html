@@ -1,44 +1,49 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}Массовое добавление health-check — DomainGuard{% endblock %}
 {% block content %}
-<h1 class="mb-4 text-lg font-semibold">Массовое добавление health-check</h1>
-<p class="mb-4 text-sm text-gray-600">
+{{ ui.page_header("Массовое добавление health-check") }}
+<p class="mb-4 text-sm muted">
   Шаблон применяется к выбранным доменам. В URL можно использовать <code>{{ '{fqdn}' }}</code> —
   он подставится в адрес каждого домена.
 </p>
+<div class="card card-p max-w-2xl">
 <form method="post" action="/healthchecks/bulk" class="space-y-4">
-  <div class="grid max-w-2xl grid-cols-2 gap-2 text-sm">
-    <label class="col-span-2">URL-шаблон
+  <div class="grid grid-cols-2 gap-3 text-sm">
+    <label class="col-span-2"><span class="label">URL-шаблон</span>
       <input name="url" required placeholder="https://{{ '{fqdn}' }}/click?pid=1&offer_id=625"
-             class="mt-1 w-full rounded border px-2 py-1 font-mono" />
+             class="input input-mono" />
     </label>
-    <label>Метод
-      <select name="method" class="mt-1 w-full rounded border px-2 py-1"><option>GET</option><option>HEAD</option></select>
+    <label><span class="label">Метод</span>
+      <select name="method" class="select"><option>GET</option><option>HEAD</option></select>
     </label>
-    <label>Ожид. статусы
-      <input name="expected_statuses" value="301,302" class="mt-1 w-full rounded border px-2 py-1" />
+    <label><span class="label">Ожид. статусы</span>
+      <input name="expected_statuses" value="301,302" class="input" />
     </label>
-    <label class="flex items-center gap-2"><input type="checkbox" name="follow_redirects" /> следовать редиректам</label>
-    <label>Location-паттерн
-      <input name="location_pattern" class="mt-1 w-full rounded border px-2 py-1" />
+    <label class="col-span-2 flex items-center gap-2 pt-1"><input type="checkbox" name="follow_redirects" class="checkbox" /> следовать редиректам</label>
+    <label><span class="label">Location-паттерн</span>
+      <input name="location_pattern" class="input" />
     </label>
-    <label>Порог неудач
-      <input name="fail_threshold" type="number" value="3" class="mt-1 w-full rounded border px-2 py-1" />
+    <label><span class="label">Порог неудач</span>
+      <input name="fail_threshold" type="number" value="3" class="input" />
     </label>
   </div>
 
-  <fieldset class="max-w-2xl">
-    <legend class="mb-1 text-sm text-gray-600">Домены</legend>
-    <div class="max-h-64 overflow-y-auto rounded border p-2 text-sm">
+  <fieldset>
+    <legend class="mb-1 label">Домены</legend>
+    <div class="max-h-64 overflow-y-auto rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700">
       {% for d in domains %}
-        <label class="block"><input type="checkbox" name="domain_ids" value="{{ d.id }}" /> {{ d.fqdn }}</label>
+        <label class="block"><input type="checkbox" name="domain_ids" value="{{ d.id }}" class="checkbox" /> {{ d.fqdn }}</label>
       {% else %}
-        <p class="text-gray-500">Нет доступных доменов.</p>
+        <p class="muted">Нет доступных доменов.</p>
       {% endfor %}
     </div>
   </fieldset>
 
-  <button type="submit" class="rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Применить</button>
-  <a href="/domains" class="ml-2 text-sm text-gray-600 hover:underline">Отмена</a>
+  <div class="flex items-center gap-3">
+    <button type="submit" class="btn btn-primary">Применить</button>
+    <a href="/domains" class="btn btn-ghost">Отмена</a>
+  </div>
 </form>
+</div>
 {% endblock %}

@@ -1,26 +1,27 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}Алерты — DomainGuard{% endblock %}
 {% block content %}
-<h1 class="mb-4 text-lg font-semibold">Активные алерты</h1>
-<table class="w-full border-collapse text-sm">
-  <thead>
-    <tr class="border-b text-left text-gray-600">
-      <th class="py-2">Домен</th><th class="py-2">Тип</th><th class="py-2">Severity</th><th class="py-2">Когда</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for event, fqdn in rows %}
-    <tr class="border-b">
-      <td class="py-2 font-mono">{{ fqdn }}</td>
-      <td class="py-2">{{ event.kind }}</td>
-      <td class="py-2">
-        <span class="{{ 'text-red-700' if event.severity=='high' else 'text-gray-600' }}">{{ event.severity }}</span>
-      </td>
-      <td class="py-2">{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="4" class="py-4 text-gray-500">Активных алертов нет.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+{{ ui.page_header("Активные алерты") }}
+<div class="card overflow-x-auto">
+  <table class="dg-table">
+    <thead>
+      <tr>
+        <th>Домен</th><th>Тип</th><th>Severity</th><th>Когда</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for event, fqdn in rows %}
+      <tr>
+        <td class="font-mono">{{ fqdn }}</td>
+        <td>{{ event.kind }}</td>
+        <td>{{ ui.status_badge(event.severity) }}</td>
+        <td>{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      </tr>
+      {% else %}
+      {{ ui.empty_row(4, "Активных алертов нет.") }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

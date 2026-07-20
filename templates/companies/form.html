@@ -1,23 +1,24 @@
 {% extends "base.html" %}
+{% import "_components.html" as ui %}
 {% block title %}{{ "Изменить компанию" if company else "Новая компания" }} — DomainGuard{% endblock %}
 {% block content %}
 {% set editing = company is not none %}
-<h1 class="mb-4 text-lg font-semibold">{{ "Изменить компанию" if editing else "Новая компания" }}</h1>
-{% if error %}
-  <p class="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</p>
-{% endif %}
-<form method="post" action="{{ '/companies/' ~ company.id if editing else '/companies' }}" class="max-w-md space-y-3">
+{{ ui.page_header("Изменить компанию" if editing else "Новая компания") }}
+{{ ui.flash(error) }}
+<div class="card card-p max-w-lg">
+<form method="post" action="{{ '/companies/' ~ company.id if editing else '/companies' }}" class="space-y-4">
   <div>
-    <label class="block text-sm text-gray-600" for="name">Название</label>
-    <input id="name" name="name" required value="{{ company.name if editing else '' }}"
-           class="mt-1 w-full rounded border px-3 py-2" />
+    <label class="label" for="name">Название</label>
+    <input id="name" name="name" required value="{{ company.name if editing else '' }}" class="input" />
   </div>
   <div>
-    <label class="block text-sm text-gray-600" for="code">Код</label>
-    <input id="code" name="code" required value="{{ company.code if editing else '' }}"
-           class="mt-1 w-full rounded border px-3 py-2 font-mono" />
+    <label class="label" for="code">Код</label>
+    <input id="code" name="code" required value="{{ company.code if editing else '' }}" class="input input-mono" />
   </div>
-  <button type="submit" class="rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Сохранить</button>
-  <a href="/companies" class="ml-2 text-sm text-gray-600 hover:underline">Отмена</a>
+  <div class="flex items-center gap-3 pt-1">
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/companies" class="btn btn-ghost">Отмена</a>
+  </div>
 </form>
+</div>
 {% endblock %}
