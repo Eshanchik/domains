@@ -77,10 +77,19 @@
   bulk-архив, CSV). Проверено в Docker: создание everness.online, карточка 200,
   история, CSV, IDN-дедуп.
 
-- [ ] **T05. Импорт: single / bulk / CSV.**
+- [x] **T05. Импорт: single / bulk / CSV.** _(2026-07-20)_
   Ручное добавление; bulk-textarea (по строке); CSV-импорт (формат из SPEC §3.2)
   с предпросмотром, upsert по FQDN, отчётом создано/обновлено/ошибки;
   manual-поля не перетираются. Тесты: битые строки, дубли, повторный импорт.
+  _Сделано:_ сервис `import_domains` (parse_bulk/parse_csv, run_import с upsert по
+  FQDN, per-row отчёт created/updated/error, dry-run через SAVEPOINT — full
+  rollback экспайрил бы `user` → MissingGreenlet в шаблоне); резолв проекта:
+  form-default + per-row `project_code` (в рамках видимых проектов, неоднозначность
+  → ошибка); manual-поля не перетираются импортом; web: форма (textarea + CSV
+  upload) → предпросмотр (dry-run) → подтверждение (commit). Тесты: 55 (парсинг,
+  preview-не-персистит/commit, повторный upsert, битая строка, CSV с
+  project_code/tags/price, manual-сохранение, scope). Проверено в Docker:
+  preview→0, commit→2, re-import→2, битая строка → ошибка.
 
 - [ ] **T06. Инфраструктура задач: очередь, планировщик, лимитер.**
   Dramatiq + Redis; CheckSchedule + scheduler-цикл (выборка созревших по
