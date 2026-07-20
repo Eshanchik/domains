@@ -109,11 +109,22 @@
   без дублей). Проверено в Docker: домен → scheduler enqueue → worker
   обрабатывает run_check(rdap/ssl/vt) через очередь Redis.
 
-- [ ] **T07. Проверка expiry: RDAP + WHOIS fallback.**
+- [x] **T07. Проверка expiry: RDAP + WHOIS fallback.** _(2026-07-20)_
   IANA bootstrap с кэшем; парсинг RDAP (expiry, статусы, NS, registrant);
   WHOIS-fallback через библиотеку; запись CheckResult (партиции по месяцам) +
   обновление Domain c source=rdap; `stale` при сбоях.
   Тесты: моки RDAP/WHOIS, таймауты/429/503 → stale, смена expiry → history.
+  _Сделано:_ `checks/rdap` (IANA bootstrap с кэшем в Redis, base_for_tld,
+  query_domain с 404→NotFound / 429,5xx,timeout→RdapError, parse_rdap), `checks/
+  whois` (python-whois в потоке, mockable `_whois_lookup`), `checks/expiry`
+  (RDAP→WHOIS fallback с токен-бакетом + circuit breaker + retry; stale не стирает
+  данные; manual-поля не перетираются; DomainFieldHistory на tracked-поля);
+  партиционированная по месяцам `check_result` (ручная миграция PARTITION BY RANGE,
+  runtime `ensure_partition`, env.include_object скрывает от autogenerate);
+  актор `run_check` диспатчит rdap → expiry. Тесты: 86 (RDAP parse/404/429/503/
+  timeout, WHOIS parse/ошибки, expiry success/whois-fallback/stale-без-стирания/
+  manual-preserve). Проверено в Docker на реальном RDAP: everness.online →
+  expiry 2027-01-29, NS Cloudflare, source=rdap, check_result записан.
 
 - [ ] **T08. Проверка SSL.**
   Хосты: apex + www + ssl_extra_hosts; получение серта (даты, издатель, SAN,
