@@ -1,8 +1,41 @@
 {% extends "base.html" %}
-{% block title %}DomainGuard{% endblock %}
+{% block title %}Обзор — DomainGuard{% endblock %}
 {% block content %}
-<h1 class="text-lg font-semibold">Добро пожаловать, {{ user.login }}</h1>
-<p class="mt-2 text-gray-600">
-  Дашборд появится по мере готовности модулей (домены, проверки, алерты).
-</p>
+<h1 class="mb-4 text-lg font-semibold">Обзор</h1>
+
+<div class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+  {% macro tile(label, value, href, danger=false) %}
+    <a href="{{ href }}" class="rounded border bg-white p-4 hover:bg-gray-50">
+      <div class="text-2xl font-semibold {{ 'text-red-700' if danger and value else 'text-gray-900' }}">{{ value }}</div>
+      <div class="text-sm text-gray-500">{{ label }}</div>
+    </a>
+  {% endmacro %}
+  {{ tile("Всего доменов", ov.total, "/domains") }}
+  {{ tile("Истекает ≤ 7 дн.", ov.expiring_7, "/domains?expiring=7", danger=true) }}
+  {{ tile("Истекает ≤ 30 дн.", ov.expiring_30, "/domains?expiring=30") }}
+  {{ tile("Истекает ≤ 90 дн.", ov.expiring_90, "/domains?expiring=90") }}
+  {{ tile("Проблемы SSL", ov.ssl_problems, "/alerts", danger=true) }}
+  {{ tile("VT-детекты", ov.vt_detects, "/domains?vt_detect=true", danger=true) }}
+  {{ tile("Health-check down", ov.health_down, "/domains?health_down=true", danger=true) }}
+</div>
+
+<h2 class="mb-2 text-sm font-medium text-gray-600">По компаниям</h2>
+<table class="w-full border-collapse text-sm">
+  <thead>
+    <tr class="border-b text-left text-gray-600">
+      <th class="py-2">Компания</th><th class="py-2">Доменов</th><th class="py-2">Истекает ≤ 30 дн.</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in ov.by_company %}
+    <tr class="border-b">
+      <td class="py-2">{{ row.name }}</td>
+      <td class="py-2">{{ row.domains }}</td>
+      <td class="py-2 {{ 'text-red-700' if row.expiring_30 else '' }}">{{ row.expiring_30 }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="py-4 text-gray-500">Нет данных.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endblock %}

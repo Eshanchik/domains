@@ -43,6 +43,8 @@ class DomainFilter:
     registrar_id: int | None = None
     q: str | None = None
     expiring_days: int | None = None
+    vt_detect: bool = False
+    health_down: bool = False
     include_archived: bool = False
     sort: str = "fqdn"
     descending: bool = False
@@ -236,6 +238,22 @@ def _build_query(base: Select, flt: DomainFilter, allowed: set[int] | None) -> S
     if flt.expiring_days is not None:
         cutoff = datetime.now(UTC) + timedelta(days=flt.expiring_days)
         conditions.append(and_(Domain.expiry_date.is_not(None), Domain.expiry_date <= cutoff))
+    if flt.vt_detect:
+        from app.models.alert import AlertEvent
+
+        conditions.append(
+            Domain.id.in_(
+                select(AlertEvent.domain_id).where(
+                    AlertEvent.kind == "vt_malicious", AlertEvent.state == "active"
+                )
+            )
+        )
+    if flt.health_down:
+        from app.models.healthcheck import HealthCheck
+
+        conditions.append(
+            Domain.id.in_(select(HealthCheck.domain_id).where(HealthCheck.state == "down"))
+        )
     if conditions:
         base = base.where(and_(*conditions))
     return base

@@ -99,17 +99,48 @@
   {% endif %}
 </section>
 
-{# Вкладки-каркас: наполняются по мере готовности модулей. #}
-<div class="border-b text-sm">
-  <nav class="flex gap-4">
-    <span class="border-b-2 border-gray-900 pb-2 font-medium">Изменения</span>
-    <span class="pb-2 text-gray-400">Проверки</span>
-    <span class="pb-2 text-gray-400">Платежи</span>
-    <span class="pb-2 text-gray-400">Алерты</span>
-  </nav>
-</div>
+{# Активные алерты по домену #}
+<section class="mb-6">
+  <h2 class="mb-2 text-sm font-medium text-gray-600">Активные алерты</h2>
+  {% if alerts %}
+  <ul class="text-sm">
+    {% for a in alerts %}
+    <li class="border-b py-1">
+      <span class="{{ 'text-red-700' if a.severity=='high' else 'text-gray-700' }}">{{ a.kind }}</span>
+      <span class="text-gray-400">({{ a.severity }}, {{ a.fired_at.strftime('%Y-%m-%d %H:%M') }})</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-sm text-gray-500">Активных алертов нет.</p>
+  {% endif %}
+</section>
 
-<div class="mt-4">
+{# Недавние проверки #}
+<section class="mb-6">
+  <h2 class="mb-2 text-sm font-medium text-gray-600">Последние проверки</h2>
+  <table class="w-full border-collapse text-sm">
+    <thead>
+      <tr class="border-b text-left text-gray-500"><th class="py-1">Когда</th><th class="py-1">Тип</th><th class="py-1">Статус</th></tr>
+    </thead>
+    <tbody>
+      {% for c in recent_checks %}
+      <tr class="border-b">
+        <td class="py-1">{{ c.checked_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="py-1">{{ c.type }}</td>
+        <td class="py-1">
+          <span class="{{ 'text-green-700' if c.status=='ok' else ('text-red-700' if c.status in ('fail','stale') else 'text-yellow-700') }}">{{ c.status }}</span>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="py-3 text-gray-500">Проверок пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{# История изменений полей #}
+<section>
   <h2 class="mb-2 text-sm font-medium text-gray-600">История изменений полей</h2>
   <table class="w-full border-collapse text-sm">
     <thead>
@@ -131,5 +162,5 @@
       {% endfor %}
     </tbody>
   </table>
-</div>
+</section>
 {% endblock %}
