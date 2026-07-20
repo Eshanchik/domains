@@ -22,6 +22,7 @@ from app.web import companies as web_companies
 from app.web import domains as web_domains
 from app.web import healthchecks as web_healthchecks
 from app.web import import_web, settings_web
+from app.web import payments as web_payments
 from app.web import users as web_users
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(web_healthchecks.router)
     app.include_router(web_channels.router)
     app.include_router(web_alerts.router)
+    app.include_router(web_payments.router)
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

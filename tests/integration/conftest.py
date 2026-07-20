@@ -47,7 +47,8 @@ def _clean_state():
                     "domains, domain_tags, domain_field_history, check_schedule, "
                     "check_result, ssl_certificates, vt_results, settings, "
                     "health_checks, health_check_results, notification_channels, "
-                    "notification_log, alert_events, alert_rules RESTART IDENTITY CASCADE"
+                    "notification_log, alert_events, alert_rules, payments "
+                    "RESTART IDENTITY CASCADE"
                 )
             )
         redis = get_redis()

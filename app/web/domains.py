@@ -258,6 +258,9 @@ async def domain_card(
         .scalars()
         .all()
     )
+    from app.services import payments as pay_svc
+
+    payments = await pay_svc.list_for_domain(session, domain_id)
     return templates.TemplateResponse(
         request,
         "domains/card.html",
@@ -268,6 +271,7 @@ async def domain_card(
             "healthchecks": healthchecks,
             "recent_checks": recent_checks,
             "alerts": alerts,
+            "payments": payments,
         },
     )
 

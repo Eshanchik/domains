@@ -116,6 +116,42 @@
   {% endif %}
 </section>
 
+{# Платежи #}
+<section class="mb-6">
+  <h2 class="mb-2 text-sm font-medium text-gray-600">Платежи</h2>
+  {% if payments %}
+  <table class="mb-3 w-full border-collapse text-sm">
+    <thead><tr class="border-b text-left text-gray-500"><th class="py-1">Дата</th><th class="py-1">Сумма</th><th class="py-1">Курс→USD</th><th class="py-1">USD</th><th class="py-1">Заметка</th></tr></thead>
+    <tbody>
+      {% for p in payments %}
+      <tr class="border-b">
+        <td class="py-1">{{ p.paid_at.strftime('%Y-%m-%d') }}</td>
+        <td class="py-1">{{ '%.2f'|format(p.amount) }} {{ p.currency }}</td>
+        <td class="py-1">{{ '%.4f'|format(p.rate_to_usd) }}</td>
+        <td class="py-1">{{ '%.2f'|format(p.amount_usd) }}</td>
+        <td class="py-1 text-gray-500">{{ p.note or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="mb-3 text-sm text-gray-500">Платежей нет.</p>
+  {% endif %}
+  {% if user.role.value in ("admin","manager") %}
+  <details class="rounded border p-3 text-sm">
+    <summary class="cursor-pointer text-gray-700">Добавить платёж</summary>
+    <form method="post" action="/domains/{{ domain.id }}/payments" class="mt-3 grid grid-cols-2 gap-2">
+      <label>Сумма<input name="amount" required class="mt-1 w-full rounded border px-2 py-1" /></label>
+      <label>Валюта<input name="currency" value="USD" class="mt-1 w-full rounded border px-2 py-1" /></label>
+      <label>Дата<input name="paid_at" type="date" class="mt-1 w-full rounded border px-2 py-1" /></label>
+      <label>Курс→USD (опц., иначе авто)<input name="rate_override" class="mt-1 w-full rounded border px-2 py-1" /></label>
+      <label class="col-span-2">Заметка<input name="note" class="mt-1 w-full rounded border px-2 py-1" /></label>
+      <div class="col-span-2"><button type="submit" class="rounded bg-gray-900 px-3 py-1 text-white hover:bg-gray-700">Сохранить</button></div>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
 {# Недавние проверки #}
 <section class="mb-6">
   <h2 class="mb-2 text-sm font-medium text-gray-600">Последние проверки</h2>
