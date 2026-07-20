@@ -14,7 +14,7 @@
 <table class="mb-6 w-full border-collapse text-sm">
   <thead>
     <tr class="border-b text-left text-gray-600">
-      <th class="py-2">Название</th><th class="py-2">Уровень</th><th class="py-2">chat_id</th>
+      <th class="py-2">Название</th><th class="py-2">Тип</th><th class="py-2">Уровень</th><th class="py-2">Назначение</th>
       <th class="py-2">Режим</th><th class="py-2"></th>
     </tr>
   </thead>
@@ -22,10 +22,11 @@
     {% for c in channels %}
     <tr class="border-b">
       <td class="py-2">{{ c.name }}</td>
+      <td class="py-2">{{ c.type }}</td>
       <td class="py-2">
         {% if c.is_default %}глобальный{% elif c.project_id %}проект #{{ c.project_id }}{% elif c.company_id %}компания #{{ c.company_id }}{% else %}—{% endif %}
       </td>
-      <td class="py-2 font-mono">{{ chat_id_of(c) or '—' }}</td>
+      <td class="py-2 font-mono">{{ target_of(c) or '—' }}</td>
       <td class="py-2">{{ c.mode }}{% if c.digest_time %} ({{ c.digest_time }}){% endif %}</td>
       <td class="py-2">
         <form method="post" action="/channels/{{ c.id }}/test" class="inline">
@@ -38,16 +39,28 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="5" class="py-4 text-gray-500">Каналов нет.</td></tr>
+    <tr><td colspan="6" class="py-4 text-gray-500">Каналов нет.</td></tr>
     {% endfor %}
   </tbody>
 </table>
 
-<h2 class="mb-2 text-sm font-medium text-gray-600">Добавить Telegram-канал</h2>
-<p class="mb-2 text-xs text-gray-500">Токен бота задаётся один раз в <a href="/settings" class="underline">Настройках</a>. Здесь — chat_id группы/чата.</p>
+<h2 class="mb-2 text-sm font-medium text-gray-600">Добавить канал</h2>
+<p class="mb-2 text-xs text-gray-500">
+  Telegram: токен бота — в <a href="/settings" class="underline">Настройках</a>, здесь chat_id.
+  Slack/Discord/Webhook: URL incoming-webhook (хранится зашифрованным).
+</p>
 <form method="post" action="/channels" class="grid max-w-lg grid-cols-2 gap-2 text-sm">
   <label>Название<input name="name" required class="mt-1 w-full rounded border px-2 py-1" /></label>
-  <label>chat_id<input name="chat_id" required class="mt-1 w-full rounded border px-2 py-1 font-mono" /></label>
+  <label>Тип
+    <select name="type" class="mt-1 w-full rounded border px-2 py-1">
+      <option value="telegram">Telegram</option>
+      <option value="slack">Slack</option>
+      <option value="discord">Discord</option>
+      <option value="webhook">Generic Webhook</option>
+    </select>
+  </label>
+  <label>chat_id (для Telegram)<input name="chat_id" class="mt-1 w-full rounded border px-2 py-1 font-mono" /></label>
+  <label>Webhook URL (Slack/Discord/Webhook)<input name="webhook_url" class="mt-1 w-full rounded border px-2 py-1 font-mono" /></label>
   <label>Уровень
     <select name="scope" class="mt-1 w-full rounded border px-2 py-1">
       <option value="global">глобальный (дефолт)</option>

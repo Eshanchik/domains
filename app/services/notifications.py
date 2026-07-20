@@ -9,6 +9,7 @@ import redis.asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.channels import webhook as webhook_channels
 from app.channels.base import ChannelError, ChannelTransientError
 from app.channels.telegram import TelegramChannel
 from app.core import crypto
@@ -34,11 +35,15 @@ async def get_channel(session: AsyncSession, channel_id: int) -> NotificationCha
     return await session.get(NotificationChannel, channel_id)
 
 
-async def create_channel(
+CHANNEL_TYPES = ("telegram", "slack", "discord", "webhook")
+
+
+async def create_channel_typed(
     session: AsyncSession,
     *,
+    type: str,
     name: str,
-    chat_id: str,
+    config: dict,
     company_id: int | None,
     project_id: int | None,
     is_default: bool,
@@ -47,9 +52,9 @@ async def create_channel(
     actor_id: int,
 ) -> NotificationChannel:
     channel = NotificationChannel(
-        type="telegram",
+        type=type,
         name=name,
-        config_enc=crypto.encrypt(json.dumps({"chat_id": chat_id})),
+        config_enc=crypto.encrypt(json.dumps(config)),
         company_id=company_id,
         project_id=project_id,
         is_default=is_default,
@@ -65,11 +70,38 @@ async def create_channel(
         action="create",
         entity_type="channel",
         entity_id=channel.id,
-        diff={"name": name, "scope": _scope_label(channel)},
+        diff={"name": name, "type": type, "scope": _scope_label(channel)},
     )
     await session.commit()
     await session.refresh(channel)
     return channel
+
+
+async def create_channel(
+    session: AsyncSession,
+    *,
+    name: str,
+    chat_id: str,
+    company_id: int | None,
+    project_id: int | None,
+    is_default: bool,
+    mode: str,
+    digest_time: str | None,
+    actor_id: int,
+) -> NotificationChannel:
+    """Backward-compatible Telegram channel creator."""
+    return await create_channel_typed(
+        session,
+        type="telegram",
+        name=name,
+        config={"chat_id": chat_id},
+        company_id=company_id,
+        project_id=project_id,
+        is_default=is_default,
+        mode=mode,
+        digest_time=digest_time,
+        actor_id=actor_id,
+    )
 
 
 async def delete_channel(
@@ -97,13 +129,29 @@ def _scope_label(c: NotificationChannel) -> str:
     return "unassigned"
 
 
-def channel_chat_id(channel: NotificationChannel) -> str | None:
+def channel_config(channel: NotificationChannel) -> dict:
     if not channel.config_enc:
-        return None
+        return {}
     try:
-        return json.loads(crypto.decrypt(channel.config_enc)).get("chat_id")
+        return json.loads(crypto.decrypt(channel.config_enc))
     except (crypto.CryptoError, json.JSONDecodeError):
-        return None
+        return {}
+
+
+def channel_chat_id(channel: NotificationChannel) -> str | None:
+    return channel_config(channel).get("chat_id")
+
+
+def channel_target(channel: NotificationChannel) -> str:
+    """Non-secret target label for the UI (chat_id or webhook host)."""
+    cfg = channel_config(channel)
+    if channel.type == "telegram":
+        return cfg.get("chat_id", "") or ""
+    url = cfg.get("webhook_url", "") or ""
+    # Show only the host to avoid leaking the webhook token.
+    if "//" in url:
+        return url.split("//", 1)[1].split("/", 1)[0]
+    return crypto.mask(url)
 
 
 # --- Routing -----------------------------------------------------------------
@@ -144,6 +192,28 @@ async def resolve_channels(
 # --- Delivery ----------------------------------------------------------------
 
 
+async def _build_impl(session, channel: NotificationChannel, client=None):
+    """Instantiate the channel implementation from its type + config, or None."""
+    cfg = channel_config(channel)
+    if channel.type == "telegram":
+        token = await settings_store.get_secret(session, settings_store.TELEGRAM_BOT_TOKEN)
+        chat_id = cfg.get("chat_id")
+        if not token or not chat_id:
+            return None
+        return TelegramChannel(token, chat_id, client=client)
+
+    url = cfg.get("webhook_url")
+    if not url:
+        return None
+    if channel.type == "slack":
+        return webhook_channels.SlackChannel(url, client=client)
+    if channel.type == "discord":
+        return webhook_channels.DiscordChannel(url, client=client)
+    if channel.type == "webhook":
+        return webhook_channels.GenericWebhookChannel(url, client=client)
+    return None
+
+
 async def send_to_channel(
     session: AsyncSession,
     redis: aioredis.Redis,  # noqa: ARG001 — reserved for a per-bot send limiter
@@ -154,14 +224,12 @@ async def send_to_channel(
     client=None,
 ) -> bool:
     """Send ``text`` via ``channel`` (with retry) and log the outcome. Returns success."""
-    bot_token = await settings_store.get_secret(session, settings_store.TELEGRAM_BOT_TOKEN)
-    chat_id = channel_chat_id(channel)
-    if not bot_token or not chat_id:
+    impl = await _build_impl(session, channel, client=client)
+    if impl is None:
         _log_delivery(session, channel.id, alert_event_id, "failed", "not configured")
         await session.commit()
         return False
 
-    impl = TelegramChannel(bot_token, chat_id, client=client)
     try:
         await with_retry(lambda: impl.send(text), retries=3, exceptions=(ChannelTransientError,))
         _log_delivery(session, channel.id, alert_event_id, "sent", None)
