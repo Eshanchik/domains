@@ -93,12 +93,33 @@ async def authenticate(
     return AuthResult(user=user)
 
 
-def _apply_scopes(user: User, scopes: list[ScopeIn]) -> None:
-    user.scopes = [
-        UserScope(company_id=s.company_id, project_id=s.project_id)
-        for s in scopes
-        if s.company_id is not None or s.project_id is not None
-    ]
+async def _apply_scopes(session: AsyncSession, user: User, scopes: list[ScopeIn]) -> None:
+    """Replace the user's scopes, dropping references to non-existent companies/projects.
+
+    Validating here (instead of relying on FK errors) keeps the transaction clean and
+    prevents an admin typo in a scope id from 500-ing user creation.
+    """
+    from app.models.company import Company, Project
+
+    company_ids = {s.company_id for s in scopes if s.company_id is not None}
+    project_ids = {s.project_id for s in scopes if s.project_id is not None}
+
+    valid_companies: set[int] = set()
+    if company_ids:
+        rows = await session.execute(select(Company.id).where(Company.id.in_(company_ids)))
+        valid_companies = set(rows.scalars().all())
+    valid_projects: set[int] = set()
+    if project_ids:
+        rows = await session.execute(select(Project.id).where(Project.id.in_(project_ids)))
+        valid_projects = set(rows.scalars().all())
+
+    result: list[UserScope] = []
+    for s in scopes:
+        if s.company_id is not None and s.company_id in valid_companies:
+            result.append(UserScope(company_id=s.company_id))
+        elif s.project_id is not None and s.project_id in valid_projects:
+            result.append(UserScope(project_id=s.project_id))
+    user.scopes = result
 
 
 async def create_user(session: AsyncSession, data: UserCreate, *, actor_id: int | None) -> User:
@@ -109,7 +130,7 @@ async def create_user(session: AsyncSession, data: UserCreate, *, actor_id: int 
         role=data.role,
         is_active=True,
     )
-    _apply_scopes(user, data.scopes)
+    await _apply_scopes(session, user, data.scopes)
     session.add(user)
     await session.flush()  # assign id
     await record_audit(
@@ -139,7 +160,7 @@ async def update_user(
         diff["is_active"] = {"old": user.is_active, "new": data.is_active}
         user.is_active = data.is_active
     if data.scopes is not None:
-        _apply_scopes(user, data.scopes)
+        await _apply_scopes(session, user, data.scopes)
         diff["scopes"] = [s.model_dump() for s in data.scopes]
 
     if diff:

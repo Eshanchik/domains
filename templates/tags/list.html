@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Теги — DomainGuard{% endblock %}
+{% block content %}
+<h1 class="mb-4 text-lg font-semibold">Теги</h1>
+
+{% if user.role.value == "admin" %}
+<form method="post" action="/tags" class="mb-4 flex max-w-md gap-2">
+  <input name="name" required placeholder="Новый тег" class="w-full rounded border px-3 py-2" />
+  <button type="submit" class="whitespace-nowrap rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">Добавить</button>
+</form>
+{% endif %}
+
+<div class="flex flex-wrap gap-2">
+  {% for t in tags %}
+    <span class="inline-flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-sm">
+      {{ t.name }}
+      {% if user.role.value == "admin" %}
+        <form method="post" action="/tags/{{ t.id }}/delete" class="inline">
+          <button type="submit" class="text-red-600 hover:underline" title="Удалить">×</button>
+        </form>
+      {% endif %}
+    </span>
+  {% else %}
+    <p class="text-gray-500">Нет тегов.</p>
+  {% endfor %}
+</div>
+{% endblock %}

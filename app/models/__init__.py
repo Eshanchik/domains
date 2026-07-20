@@ -6,6 +6,16 @@ Importing the model modules here ensures every table is registered on
 
 from app.db import Base
 from app.models.audit import AuditLog
+from app.models.company import Company, Project, Tag
 from app.models.user import Role, User, UserScope
 
-__all__ = ["Base", "User", "UserScope", "Role", "AuditLog"]
+__all__ = [
+    "Base",
+    "User",
+    "UserScope",
+    "Role",
+    "AuditLog",
+    "Company",
+    "Project",
+    "Tag",
+]
