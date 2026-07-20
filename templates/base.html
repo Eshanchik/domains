@@ -1,112 +1,208 @@
-{# Base layout (T23 new UI). Stack stays fixed: Jinja2 + HTMX + Tailwind (Play
-   CDN, no build step). The whole design system lives in the Tailwind component
-   layer below, so page templates use short semantic classes (.card, .btn,
-   .badge, .input, .dg-table…). UI text is Russian; design is dark-mode aware. #}
+{# Base layout — Terminal UI skin (T30, from the "DomainGuard Terminal" Claude
+   Design project). Stack unchanged: Jinja2 + HTMX + Tailwind (Play CDN, no build).
+   The whole reskin lives here: a var-backed palette remap (so hardcoded slate/
+   white utilities on pages retint automatically) + a rewritten component layer.
+   Two themes: amber (default) and green, toggled in the topbar. UI text is Russian. #}
 {% import "_components.html" as ui %}
 <!doctype html>
-<html lang="ru" class="h-full">
+<html lang="ru" class="h-full dark" data-theme="amber">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}DomainGuard{% endblock %}</title>
-    {# Apply saved theme before paint to avoid a flash. #}
+    {# Apply saved theme before paint (default amber). `dark` stays on always so
+       the pages' dark: utilities engage against the remapped palette. #}
     <script>
       (function () {
         try {
-          var t = localStorage.getItem("dg-theme");
-          if (t === "dark" || (!t && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
-            document.documentElement.classList.add("dark");
-          }
+          var t = localStorage.getItem("dg-term-theme");
+          document.documentElement.setAttribute("data-theme", t === "green" ? "green" : "amber");
         } catch (e) {}
+        document.documentElement.classList.add("dark");
       })();
     </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         darkMode: "class",
         theme: {
           extend: {
-            colors: {
-              brand: {
-                50: "#eef2ff", 100: "#e0e7ff", 200: "#c7d2fe", 300: "#a5b4fc",
-                400: "#818cf8", 500: "#6366f1", 600: "#4f46e5", 700: "#4338ca",
-                800: "#3730a3", 900: "#312e81",
-              },
-            },
             fontFamily: {
-              sans: ["ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
-              mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+              sans: ['"JetBrains Mono"', '"IBM Plex Mono"', "ui-monospace", "Menlo", "Consolas", "monospace"],
+              mono: ['"JetBrains Mono"', '"IBM Plex Mono"', "ui-monospace", "Menlo", "Consolas", "monospace"],
             },
+            colors: (function () {
+              var t = function (v) {
+                return {50:v,100:v,200:v,300:v,400:v,500:v,600:v,700:v,800:v,900:v,950:v};
+              };
+              return {
+                white: "var(--term-fg)",
+                black: "var(--term-bg)",
+                slate: {
+                  50: "var(--term-panel-2)", 100: "var(--term-fg)", 200: "var(--term-fg)",
+                  300: "var(--term-fg-dim)", 400: "var(--term-fg-dim)", 500: "var(--term-fg-dim)",
+                  600: "var(--term-fg-dim)", 700: "var(--term-border)", 800: "var(--term-panel-2)",
+                  900: "var(--term-panel)", 950: "var(--term-bg)",
+                },
+                emerald: t("var(--term-ok)"), red: t("var(--term-fail)"),
+                amber: t("var(--term-warn)"), sky: t("var(--term-info)"),
+                brand: t("var(--term-bright)"), indigo: t("var(--term-bright)"),
+              };
+            })(),
           },
         },
       };
     </script>
     <script src="https://unpkg.com/htmx.org@2.0.0"></script>
     <style type="text/tailwindcss">
-      @layer base {
-        body { @apply bg-slate-50 text-slate-800 antialiased dark:bg-slate-950 dark:text-slate-200; }
+      :root {
+        --term-bg:#05080a; --term-panel:#0a0f0c; --term-panel-2:#0e150f;
+        --term-border:#1c2a20; --term-grid:#12331f; --term-fg-faint:#4a6b56;
+        --term-ok:#33ff66; --term-warn:#ffb000; --term-fail:#ff5a5a; --term-info:#35c3ff;
+        --term-fg:#ffd08a; --term-fg-dim:#b89162; --term-bright:#ffb000; --term-bright-2:#ffc233;
+        --term-glow:0 0 6px rgba(255,176,0,.4);
       }
+      :root[data-theme="green"] {
+        --term-fg:#b7ffcf; --term-fg-dim:#5f8f6f; --term-bright:#33ff66; --term-bright-2:#00ff41;
+        --term-glow:0 0 6px rgba(51,255,102,.4);
+      }
+      @layer base {
+        html, body { background: var(--term-bg); color: var(--term-fg); }
+        body {
+          font-family: "JetBrains Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+          font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+        }
+        ::selection { background: var(--term-bright); color: var(--term-bg); }
+        ::-webkit-scrollbar { width: 9px; height: 9px; }
+        ::-webkit-scrollbar-thumb { background: var(--term-border); }
+        ::-webkit-scrollbar-track { background: var(--term-panel); }
+        input, select, textarea, button { font-family: inherit; font-size: 13px; }
+        summary::-webkit-details-marker { display: none; }
+        h1, h2, h3 { color: var(--term-fg); }
+        /* CRT vignette + scanlines (scanlines only when motion is allowed). */
+        body::before { content:""; position:fixed; inset:0; pointer-events:none; z-index:9997;
+          background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.6) 100%); }
+      }
+      @media (prefers-reduced-motion: no-preference) {
+        body::after { content:""; position:fixed; inset:0; pointer-events:none; z-index:9998;
+          background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,.14) 3px);
+          opacity:.5; }
+      }
+      @keyframes dg-blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
       @layer components {
-        /* Surfaces */
-        .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900; }
-        .card-p { @apply p-5; }
+        /* Surfaces — bordered CLI panels, no radius/shadow. */
+        .card { background: var(--term-panel); border: 1px solid var(--term-border); border-radius: 0; }
+        .card-p { padding: 16px 18px; }
 
         /* Typography */
-        .page-title { @apply text-xl font-semibold tracking-tight text-slate-900 dark:text-white; }
-        .page-title-count { @apply ml-1 text-base font-normal text-slate-400; }
-        .section-title { @apply mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400; }
-        .link { @apply font-medium text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400; }
-        .muted { @apply text-slate-500 dark:text-slate-400; }
+        .page-title { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em;
+          color: var(--term-fg); text-shadow: var(--term-glow); }
+        .page-title-count { margin-left: 6px; font-weight: 400; color: var(--term-fg-dim); }
+        .section-title { margin-bottom: 10px; font-size: 11px; font-weight: 500; text-transform: uppercase;
+          letter-spacing: .09em; color: var(--term-fg-dim); }
+        .section-title::before { content: "// "; color: var(--term-border); }
+        .link { color: var(--term-bright); }
+        .link:hover { text-shadow: var(--term-glow); }
+        .muted { color: var(--term-fg-dim); }
 
-        /* Buttons */
-        .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-50; }
-        .btn-primary { @apply bg-brand-600 text-white hover:bg-brand-700; }
-        .btn-secondary { @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700; }
-        .btn-ghost { @apply text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800; }
-        .btn-danger { @apply bg-red-600 text-white hover:bg-red-700; }
-        .btn-link-danger { @apply text-red-600 hover:text-red-700 hover:underline dark:text-red-400; }
-        .btn-sm { @apply px-2.5 py-1.5 text-xs; }
+        /* Buttons — bracketed, uppercase, square. */
+        .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px;
+          font-family: inherit; font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+          padding: 7px 12px; border: 1px solid var(--term-border); border-radius: 0;
+          background: transparent; color: var(--term-fg); cursor: pointer; white-space: nowrap;
+          transition: background .1s, color .1s, box-shadow .1s; }
+        .btn::before { content: "[ "; }
+        .btn::after { content: " ]"; }
+        .btn:focus-visible { outline: 1px solid var(--term-bright); outline-offset: 1px; }
+        .btn-primary { border-color: var(--term-bright); background: var(--term-bright); color: var(--term-bg);
+          box-shadow: var(--term-glow); }
+        .btn-primary:hover { background: var(--term-bright-2); border-color: var(--term-bright-2); }
+        .btn-secondary:hover, .btn-ghost:hover { background: var(--term-bright); color: var(--term-bg);
+          border-color: var(--term-bright); }
+        .btn-ghost { border-color: transparent; }
+        .btn-danger { border-color: var(--term-fail); color: var(--term-fail); }
+        .btn-danger:hover { background: var(--term-fail); color: var(--term-bg); }
+        .btn-link-danger { color: var(--term-fail); }
+        .btn-link-danger:hover { text-shadow: 0 0 6px rgba(255,90,90,.5); }
+        .btn-sm { padding: 4px 9px; font-size: 11px; }
 
         /* Form controls */
-        .label { @apply mb-1 block text-sm font-medium text-slate-600 dark:text-slate-300; }
-        .input, .select, .textarea { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:bg-slate-100 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-800/60; }
-        .input-mono { @apply font-mono; }
-        .checkbox { @apply h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500/40 dark:border-slate-600 dark:bg-slate-800; }
+        .label { display:block; margin-bottom: 4px; font-size: 11px; text-transform: uppercase;
+          letter-spacing: .06em; color: var(--term-fg-dim); }
+        .input, .select, .textarea { width:100%; border-radius: 0; border: 1px solid var(--term-border);
+          background: var(--term-bg); padding: 7px 10px; font-size: 13px; color: var(--term-fg);
+          caret-color: var(--term-bright); }
+        .input::placeholder, .textarea::placeholder { color: var(--term-fg-faint); }
+        .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--term-bright);
+          box-shadow: var(--term-glow); }
+        .input:disabled { color: var(--term-fg-dim); background: var(--term-panel); }
+        .input-mono { font-family: inherit; }
+        .checkbox { width: 14px; height: 14px; accent-color: var(--term-bright); }
 
-        /* Badges */
-        .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
-        .badge-gray { @apply bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300; }
-        .badge-green { @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400; }
-        .badge-red { @apply bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400; }
-        .badge-amber { @apply bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400; }
-        .badge-blue { @apply bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400; }
-        .badge-indigo { @apply bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300; }
+        /* Badges — bracketed status tokens, no pill. */
+        .badge { display:inline-flex; align-items:center; font-size: 11px; font-weight: 500;
+          text-transform: uppercase; letter-spacing: .04em; }
+        .badge::before { content: "["; opacity: .7; }
+        .badge::after { content: "]"; opacity: .7; }
+        .badge-gray { color: var(--term-fg-dim); }
+        .badge-green { color: var(--term-ok); }
+        .badge-red { color: var(--term-fail); }
+        .badge-amber { color: var(--term-warn); }
+        .badge-blue { color: var(--term-info); }
+        .badge-indigo { color: var(--term-bright); }
 
-        /* Flash banners */
-        .flash { @apply mb-4 rounded-lg border px-4 py-3 text-sm; }
-        .flash-error { @apply border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300; }
-        .flash-success { @apply border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300; }
-        .flash-info { @apply border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300; }
+        /* Flash — log lines. */
+        .flash { margin-bottom: 14px; padding: 10px 14px; border: 1px solid var(--term-border);
+          border-left-width: 3px; background: var(--term-panel); font-size: 13px; }
+        .flash-error { border-left-color: var(--term-fail); color: var(--term-fail); }
+        .flash-error::before { content: "!! "; }
+        .flash-success { border-left-color: var(--term-ok); color: var(--term-ok); }
+        .flash-success::before { content: ">> "; }
+        .flash-info { border-left-color: var(--term-info); color: var(--term-info); }
+        .flash-info::before { content: "-- "; }
 
-        /* Tables */
-        .dg-table { @apply w-full border-collapse text-sm; }
-        .dg-table thead th { @apply border-b border-slate-200 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400; }
-        .dg-table tbody td { @apply border-b border-slate-100 px-3 py-2.5 align-middle dark:border-slate-800/70; }
-        .dg-table tbody tr { @apply hover:bg-slate-50 dark:hover:bg-slate-800/40; }
-        .th { @apply border-b border-slate-200 px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:text-slate-400; }
-        .td { @apply border-b border-slate-100 px-3 py-2.5 dark:border-slate-800/70; }
+        /* Tables — CLI output. */
+        .dg-table { width:100%; border-collapse: collapse; font-size: 13px; }
+        .dg-table thead th, .th { text-align:left; padding: 7px 14px; font-weight: 500; font-size: 11px;
+          text-transform: uppercase; letter-spacing: .08em; color: var(--term-fg-dim);
+          border-bottom: 1px solid var(--term-border); }
+        .dg-table tbody td, .td { padding: 6px 14px; border-bottom: 1px solid var(--term-border); }
+        .dg-table tbody tr:nth-child(even) { background: var(--term-panel-2); }
+        .dg-table tbody tr:hover { box-shadow: inset 3px 0 0 var(--term-bright); background: rgba(255,255,255,.03); }
 
         /* Stat tiles */
-        .stat { @apply block rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-brand-300 hover:bg-brand-50/40 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-700 dark:hover:bg-slate-800; }
-        .stat-value { @apply text-2xl font-semibold text-slate-900 dark:text-white; }
-        .stat-label { @apply mt-0.5 text-sm text-slate-500 dark:text-slate-400; }
-        .stat-danger .stat-value { @apply text-red-600 dark:text-red-400; }
+        .stat { display:block; border: 1px solid var(--term-border); background: var(--term-panel);
+          padding: 14px 16px; border-radius: 0; }
+        .stat:hover { border-color: var(--term-bright); }
+        .stat-value { font-size: 30px; font-weight: 700; line-height: 1; color: var(--term-bright);
+          text-shadow: var(--term-glow); }
+        .stat-label { margin-top: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+          color: var(--term-fg-dim); }
+        .stat-danger .stat-value { color: var(--term-fail); }
 
-        /* Sidebar nav */
-        .nav-link { @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white; }
-        .nav-link.active { @apply bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300; }
-        .nav-section { @apply px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500; }
+        /* Sidebar nav — command list. */
+        .nav-link { display:flex; align-items:center; gap: 0; padding: 4px 8px; margin-bottom: 1px;
+          font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--term-fg);
+          white-space: nowrap; border-radius: 0; }
+        .nav-link svg { display: none; }
+        .nav-link::before { content: "> "; white-space: pre; }
+        .nav-link:hover { background: var(--term-bright); color: var(--term-bg); }
+        .nav-link.active { background: var(--term-bright); color: var(--term-bg); box-shadow: var(--term-glow); }
+        .nav-section { padding: 0 8px 6px; font-size: 11px; letter-spacing: .08em; color: var(--term-fg-faint);
+          text-transform: uppercase; }
+        .nav-section::before { content: "# "; }
+
+        /* Theme switch buttons in the topbar. */
+        :root[data-theme="amber"] [data-theme-btn="amber"],
+        :root[data-theme="green"] [data-theme-btn="green"] {
+          color: var(--term-bright); text-shadow: var(--term-glow);
+        }
       }
+      .dg-caret { display:inline-block; width:.5em; height:1.05em; background: var(--term-bright);
+        box-shadow: var(--term-glow); vertical-align: text-bottom; animation: dg-blink 1.05s step-end infinite; }
     </style>
   </head>
   <body class="h-full">
@@ -140,11 +236,12 @@
       <div class="flex min-h-full">
         {# ---- Sidebar ---- #}
         <aside id="dg-sidebar"
-               class="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white px-3 py-4 dark:border-slate-800 dark:bg-slate-900 lg:flex">
-          <a href="/" class="mb-4 flex items-center gap-2 px-2">
-            <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">{{ ui.icon("shield", "h-5 w-5") }}</span>
-            <span class="text-base font-semibold tracking-tight text-slate-900 dark:text-white">DomainGuard</span>
-          </a>
+               class="fixed inset-y-0 left-0 z-30 hidden w-52 flex-col px-3 py-4 lg:flex"
+               style="background:var(--term-panel);border-right:1px solid var(--term-border)">
+          <div class="mb-4 px-2">
+            <span class="text-sm font-bold tracking-widest" style="color:var(--term-bright);text-shadow:var(--term-glow)">DOMAINGUARD</span>
+            <div class="text-[10px]" style="color:var(--term-fg-faint)">// secure domain monitor</div>
+          </div>
           <nav class="flex-1 space-y-0.5 overflow-y-auto">
             {% for section_title, items in nav_sections %}
               {% set vis = [] %}
@@ -161,22 +258,21 @@
         </aside>
 
         {# ---- Main column ---- #}
-        <div class="flex min-w-0 flex-1 flex-col lg:pl-60">
-          <header class="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/90 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
+        <div class="flex min-w-0 flex-1 flex-col lg:pl-52">
+          <header class="sticky top-0 z-20 flex h-11 items-center gap-3 px-4"
+                  style="background:var(--term-panel);border-bottom:1px solid var(--term-border)">
             <button type="button" onclick="document.getElementById('dg-sidebar').classList.toggle('hidden')"
-                    class="btn btn-ghost btn-sm lg:hidden" aria-label="Меню">{{ ui.icon("menu") }}</button>
-            <div class="flex-1"></div>
-            <button type="button" onclick="dgToggleTheme()" class="btn btn-ghost btn-sm" aria-label="Тема">
-              <span class="hidden dark:inline">{{ ui.icon("sun") }}</span>
-              <span class="inline dark:hidden">{{ ui.icon("moon") }}</span>
-            </button>
-            <div class="flex items-center gap-2">
-              <span class="hidden text-sm text-slate-600 dark:text-slate-300 sm:inline">{{ user.login }}</span>
-              {{ ui.badge(user.role.value, "indigo") }}
-              <form method="post" action="/logout">
-                <button type="submit" class="btn btn-ghost btn-sm" title="Выйти">{{ ui.icon("logout") }}</button>
-              </form>
-            </div>
+                    class="btn btn-ghost btn-sm lg:hidden" aria-label="Меню">≡</button>
+            <span class="text-xs" style="color:var(--term-fg-dim)">
+              <span style="color:var(--term-bright);text-shadow:var(--term-glow)">dg@domainguard</span>:<span style="color:var(--term-info)">~{{ path if path != '/' else '' }}</span>$<span class="dg-caret ml-0.5"></span>
+            </span>
+            <span class="flex-1"></span>
+            <span class="hidden text-xs sm:inline" style="color:var(--term-fg-dim)">user=<span style="color:var(--term-fg)">{{ user.login }}</span> role=<span style="color:var(--term-fg)">{{ user.role.value }}</span></span>
+            <button type="button" data-theme-btn="amber" onclick="dgSetTheme('amber')" class="text-xs" style="background:none;border:none;cursor:pointer;color:var(--term-fg-dim)">[amber]</button>
+            <button type="button" data-theme-btn="green" onclick="dgSetTheme('green')" class="text-xs" style="background:none;border:none;cursor:pointer;color:var(--term-fg-dim)">[green]</button>
+            <form method="post" action="/logout">
+              <button type="submit" class="text-xs" style="background:none;border:none;cursor:pointer;color:var(--term-fail)" title="Выйти">[exit]</button>
+            </form>
           </header>
           <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
             {% block content %}{% endblock %}
@@ -184,20 +280,51 @@
         </div>
       </div>
       <script>
-        function dgToggleTheme() {
-          var d = document.documentElement.classList.toggle("dark");
-          try { localStorage.setItem("dg-theme", d ? "dark" : "light"); } catch (e) {}
+        function dgSetTheme(t) {
+          document.documentElement.setAttribute("data-theme", t);
+          try { localStorage.setItem("dg-term-theme", t); } catch (e) {}
         }
       </script>
     {% else %}
-      {# Unauthenticated shell (login): centered, no sidebar. #}
-      <div class="flex min-h-full flex-col items-center justify-center px-4 py-12">
-        <div class="mb-6 flex items-center gap-2">
-          <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white">{{ ui.icon("shield", "h-6 w-6") }}</span>
-          <span class="text-lg font-semibold tracking-tight text-slate-900 dark:text-white">DomainGuard</span>
+      {# Unauthenticated shell (login): matrix rain behind a terminal panel. #}
+      <div class="relative flex min-h-full flex-col items-center justify-center px-4 py-12" style="overflow:hidden">
+        <canvas id="dg-matrix" class="pointer-events-none absolute inset-0 h-full w-full" style="opacity:.4;z-index:0"></canvas>
+        <div class="relative w-full max-w-md" style="z-index:1">
+          <div class="mb-3 text-center">
+            <span class="text-lg font-bold tracking-widest" style="color:var(--term-bright);text-shadow:var(--term-glow)">DOMAINGUARD</span>
+            <div class="text-[11px]" style="color:var(--term-fg-faint)">// secure domain monitor</div>
+          </div>
+          {{ self.content() }}
         </div>
-        <div class="w-full max-w-sm">{{ self.content() }}</div>
       </div>
+      <script>
+        (function () {
+          var c = document.getElementById("dg-matrix");
+          if (!c || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) return;
+          var ctx = c.getContext("2d"), fs = 14;
+          var chars = "アイウエオカキクケコサシスセソタチツテトナニ0123456789<>#$%&*";
+          var cols, drops, last = 0, raf;
+          function rgb() { return getComputedStyle(document.documentElement).getPropertyValue("--term-bright").trim() === "#33ff66" ? "51,255,102" : "255,176,0"; }
+          function resize() { c.width = c.offsetWidth; c.height = c.offsetHeight; cols = Math.ceil(c.width / fs);
+            drops = new Array(cols).fill(0).map(function () { return Math.random() * -40; }); }
+          resize();
+          function draw(t) {
+            raf = requestAnimationFrame(draw);
+            if (t - last < 60) return; last = t;
+            if (c.offsetWidth !== c.width) resize();
+            ctx.fillStyle = "rgba(5,8,10,0.14)"; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.font = fs + "px monospace";
+            var col = rgb();
+            for (var i = 0; i < cols; i++) {
+              var ch = chars[Math.floor(Math.random() * chars.length)], x = i * fs, y = drops[i] * fs;
+              ctx.fillStyle = "rgba(" + col + ",0.9)"; ctx.fillText(ch, x, y);
+              if (y > c.height && Math.random() > 0.975) drops[i] = 0;
+              drops[i]++;
+            }
+          }
+          raf = requestAnimationFrame(draw);
+        })();
+      </script>
     {% endif %}
   </body>
 </html>

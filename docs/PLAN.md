@@ -442,6 +442,29 @@
   - DoD: `docs/design/terminal-ui-brief.md` готов, самодостаточен (его можно
     отдать в Claude Design как есть), покрывает все ключевые экраны.
 
+- [x] **T30. Реализация Terminal UI (скин из Claude Design).** _(2026-07-21)_
+  Импортирован проект Claude Design «Terminal prototype DomainGuard»
+  (`DomainGuard Terminal.dc.html`) и применён как реальный скин целиком в
+  `base.html` — **без правок 24 страничных шаблонов и без изменения логики/
+  маршрутов/текстов**. Приём: (1) `dark` всегда включён + **ремап палитры Tailwind
+  на `--term-*` CSS-переменные** (slate/white/emerald/red/amber/sky/brand →
+  токены темы), поэтому хардкод-утилиты `slate/white` на страницах ретинтуются
+  сами (dark-вариант всегда доминирует → детерминированно); (2) переписан слой
+  компонентов (`.card/.btn-*/.badge-*/.input/.dg-table/.stat/.nav-link/.flash/
+  .page-title/.section-title/.link/.muted`) в терминальном стиле. Две темы
+  **amber (по умолч.)/green** (переключатель `[amber]/[green]`, localStorage),
+  JetBrains Mono, боковое меню `> …` + секции `# …`, топбар-промпт
+  `dg@domainguard:~$` с мигающей кареткой, бейджи `[OK]/[WARN]/[FAIL]`, кнопки
+  `[ … ]`, CLI-таблицы с zebra/hover, matrix-дождь на входе + scanline/vignette
+  (под `prefers-reduced-motion`). Проверено вживую: вход (matrix), обзор, домены
+  (бейджи+kebab-дропдаун), детали алерта — обе темы. Тесты 191 зелёные (все
+  страницы рендерятся), ruff+format чисто. Без миграций/изменений API.
+  Применить дизайн «DomainGuard Terminal» (проект Claude Design) как реальный скин
+  поверх существующих шаблонов: перекраска на уровне `base.html` (слой компонентов
+  + ремап палитры Tailwind на `--term-*`), две темы amber/green, matrix-фон на
+  входе, scanline/vignette, бейджи `[OK]/[WARN]/[FAIL]`, кнопки `[ … ]`, CLI-таблицы.
+  Без правок страничных шаблонов и без изменения логики/маршрутов/текстов.
+
 ## Backlog / находки
 
 - Точная глубина очередей Dramatiq и латентность проверок в `/metrics` — требуют
