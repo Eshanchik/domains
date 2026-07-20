@@ -43,6 +43,8 @@ def _filter_from_query(
     sort: str,
     direction: str,
     page: int,
+    vt_detect: bool = False,
+    health_down: bool = False,
 ) -> DomainFilter:
     return DomainFilter(
         company_id=company_id,
@@ -51,6 +53,8 @@ def _filter_from_query(
         registrar_id=registrar_id,
         q=q or None,
         expiring_days=expiring,
+        vt_detect=vt_detect,
+        health_down=health_down,
         include_archived=archived,
         sort=sort if sort in {"fqdn", "expiry_date", "tld", "created_at"} else "fqdn",
         descending=(direction == "desc"),
@@ -67,6 +71,8 @@ async def domains_list(
     registrar_id: int | None = Query(None),
     q: str | None = Query(None),
     expiring: int | None = Query(None),
+    vt_detect: bool = Query(False),
+    health_down: bool = Query(False),
     archived: bool = Query(False),
     sort: str = Query("fqdn"),
     dir: str = Query("asc"),
@@ -75,7 +81,18 @@ async def domains_list(
     user: User = Depends(require_user),
 ) -> HTMLResponse:
     flt = _filter_from_query(
-        company_id, project_id, tag, registrar_id, q, expiring, archived, sort, dir, page
+        company_id,
+        project_id,
+        tag,
+        registrar_id,
+        q,
+        expiring,
+        archived,
+        sort,
+        dir,
+        page,
+        vt_detect=vt_detect,
+        health_down=health_down,
     )
     items, total = await svc.list_domains(session, user, flt)
     companies = await companies_svc.list_companies(session, user)
@@ -211,13 +228,47 @@ async def domain_card(
     if domain is None or not await _visible(session, user, domain):
         return RedirectResponse("/domains", status_code=status.HTTP_303_SEE_OTHER)
     project = await companies_svc.get_project(session, domain.project_id)
+    from sqlalchemy import select
+
+    from app.models.alert import AlertEvent
+    from app.models.check_result import CheckResult
     from app.services import healthchecks as hc_svc
 
     healthchecks = await hc_svc.list_for_domain(session, domain_id)
+    recent_checks = list(
+        (
+            await session.execute(
+                select(CheckResult)
+                .where(CheckResult.domain_id == domain_id)
+                .order_by(CheckResult.checked_at.desc())
+                .limit(20)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    alerts = list(
+        (
+            await session.execute(
+                select(AlertEvent)
+                .where(AlertEvent.domain_id == domain_id, AlertEvent.state == "active")
+                .order_by(AlertEvent.fired_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     return templates.TemplateResponse(
         request,
         "domains/card.html",
-        {"user": user, "domain": domain, "project": project, "healthchecks": healthchecks},
+        {
+            "user": user,
+            "domain": domain,
+            "project": project,
+            "healthchecks": healthchecks,
+            "recent_checks": recent_checks,
+            "alerts": alerts,
+        },
     )
 
 

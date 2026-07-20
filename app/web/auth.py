@@ -84,6 +84,10 @@ async def logout(
 @router.get("/", response_class=HTMLResponse)
 async def home(
     request: Request,
+    session: AsyncSession = Depends(get_session),
     user: User = Depends(require_user),
 ) -> HTMLResponse:
-    return templates.TemplateResponse(request, "home.html", {"user": user})
+    from app.services.dashboard import build_overview
+
+    overview = await build_overview(session, user)
+    return templates.TemplateResponse(request, "home.html", {"user": user, "ov": overview})
