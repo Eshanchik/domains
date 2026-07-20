@@ -8,6 +8,8 @@ import os
 # uses NullPool. Each TestClient spins its own event loop; a pooled asyncpg
 # connection bound to a previous loop would raise "attached to a different loop".
 os.environ["ENVIRONMENT"] = "test"
+# A fixed, valid Fernet key for encrypting secrets in tests (not a real secret).
+os.environ.setdefault("DG_MASTER_KEY", "2f4lEgCux7eN2sivGri_2plV3lhH3soDWV4g2PwwwGk=")
 
 from collections.abc import Iterator  # noqa: E402
 
