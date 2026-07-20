@@ -26,6 +26,11 @@ async def _run(check_type: str, domain_id: int) -> None:
 
                 status = await run_expiry_check(session, redis, domain_id)
                 log.info("expiry check domain=%s → %s", domain_id, status)
+            elif check_type == "ssl":
+                from app.checks.ssl_check import run_ssl_check
+
+                status = await run_ssl_check(session, redis, domain_id)
+                log.info("ssl check domain=%s → %s", domain_id, status)
             else:
                 log.info("check type %s not implemented yet (domain=%s)", check_type, domain_id)
     finally:
