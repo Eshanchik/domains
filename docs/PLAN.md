@@ -91,12 +91,23 @@
   project_code/tags/price, manual-сохранение, scope). Проверено в Docker:
   preview→0, commit→2, re-import→2, битая строка → ошибка.
 
-- [ ] **T06. Инфраструктура задач: очередь, планировщик, лимитер.**
+- [x] **T06. Инфраструктура задач: очередь, планировщик, лимитер.** _(2026-07-20)_
   Dramatiq + Redis; CheckSchedule + scheduler-цикл (выборка созревших по
   (type, next_check_at), джиттер, батчи); модуль rate_limiter (токен-бакеты в
   Redis: per-service и per-TLD, дневные бюджеты); retry с экспоненциальным
   backoff; circuit breaker; идемпотентность задач (locks).
   Тесты: лимитер под конкуренцией, backoff, повтор задачи без дублей.
+  _Сделано:_ `core/rate_limiter` (атомарные Lua токен-бакет + дневной бюджет),
+  `core/retry` (async backoff+jitter, RetryError), `core/circuit_breaker`
+  (Redis, closed/open/half-open), `core/locks` (SET NX + токен, compare-del
+  release, ctx-manager); модель `CheckSchedule` (PK domain_id+type, индекс
+  (type,next_check_at)) + миграция; Dramatiq RedisBroker + актор `run_check`
+  (no-op до T07); `scheduler/service` (enqueue_due с локами и джиттером +
+  backfill) и рабочий цикл `scheduler/main`; worker-entrypoint → `dramatiq`.
+  Тесты: 72 (лимитер: capacity/refill/бюджет/конкуренция=exactly-N; retry;
+  breaker; locks; scheduler: backfill идемпотентен, dispatch+advance, повтор
+  без дублей). Проверено в Docker: домен → scheduler enqueue → worker
+  обрабатывает run_check(rdap/ssl/vt) через очередь Redis.
 
 - [ ] **T07. Проверка expiry: RDAP + WHOIS fallback.**
   IANA bootstrap с кэшем; парсинг RDAP (expiry, статусы, NS, registrant);

@@ -44,7 +44,8 @@ def _clean_state():
             await conn.execute(
                 text(
                     "TRUNCATE users, user_scopes, audit_log, companies, projects, tags, "
-                    "domains, domain_tags, domain_field_history RESTART IDENTITY CASCADE"
+                    "domains, domain_tags, domain_field_history, check_schedule "
+                    "RESTART IDENTITY CASCADE"
                 )
             )
         redis = get_redis()
