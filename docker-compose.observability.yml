@@ -1,0 +1,28 @@
+# Optional observability overlay: Prometheus scrapes the app's /metrics and Grafana
+# renders the bundled dashboard.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+# Then open Grafana at http://<host>:3000 (admin / admin on first login).
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:

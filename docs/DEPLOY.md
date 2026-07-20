@@ -90,6 +90,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 - `.../metrics` — Prometheus (кол-во доменов, активные алерты, circuit breaker).
 - Логи: `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f`.
 
+Опционально Prometheus + Grafana (дашборд из коробки):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  -f docker-compose.observability.yml up -d
+# Grafana: http://<host>:3000 (admin/admin), дашборд «DomainGuard».
+```
+
 ## 8. Откат
 
 ```bash

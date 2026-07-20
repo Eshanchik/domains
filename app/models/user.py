@@ -36,6 +36,9 @@ class User(Base):
         default=Role.viewer,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 2FA (TOTP): secret encrypted at rest; enabled only after a verified code.
+    totp_secret_enc: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     scopes: Mapped[list[UserScope]] = relationship(
