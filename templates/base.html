@@ -17,6 +17,7 @@
           <a href="/" class="font-semibold">DomainGuard</a>
           {% if user %}
             <a href="/domains" class="text-sm text-gray-600 hover:text-gray-900">Домены</a>
+            <a href="/alerts" class="text-sm text-gray-600 hover:text-gray-900">Алерты</a>
             {% if user.role.value in ("admin", "manager") %}
               <a href="/import" class="text-sm text-gray-600 hover:text-gray-900">Импорт</a>
             {% endif %}

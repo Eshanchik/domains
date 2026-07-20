@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Алерты — DomainGuard{% endblock %}
+{% block content %}
+<h1 class="mb-4 text-lg font-semibold">Активные алерты</h1>
+<table class="w-full border-collapse text-sm">
+  <thead>
+    <tr class="border-b text-left text-gray-600">
+      <th class="py-2">Домен</th><th class="py-2">Тип</th><th class="py-2">Severity</th><th class="py-2">Когда</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for event, fqdn in rows %}
+    <tr class="border-b">
+      <td class="py-2 font-mono">{{ fqdn }}</td>
+      <td class="py-2">{{ event.kind }}</td>
+      <td class="py-2">
+        <span class="{{ 'text-red-700' if event.severity=='high' else 'text-gray-600' }}">{{ event.severity }}</span>
+      </td>
+      <td class="py-2">{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="py-4 text-gray-500">Активных алертов нет.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

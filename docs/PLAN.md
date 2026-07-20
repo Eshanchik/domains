@@ -192,13 +192,23 @@
   Docker: канал создан, config зашифрован, тест-отправка без бота — graceful
   fail. Реальная доставка — на деплое (токен бота).
 
-- [ ] **T12. Правила алертов + события + дедуп.**
+- [x] **T12. Правила алертов + события + дедуп.** _(2026-07-20)_
   AlertRule (условия expiry≤N, ssl≤N, vt_malicious≥1, health down/recovered;
   пороги по умолчанию 60/30/14/7/1 и 30/14/7/3/1); движок: оценка после каждой
   проверки; AlertEvent с dedupe-key и state active/resolved; переход порога =
   новое уведомление; severity: high (VT, health down, expiry≤7) → instant,
   остальное → digest. Русские шаблоны сообщений.
   Тесты: нет спама при повторных прогонах, переходы порогов, resolve.
+  _Сделано:_ модели AlertRule/AlertEvent (+миграция; частичный UNIQUE-индекс на
+  dedupe_key WHERE state='active' → дедуп); `services/alerts` (evaluate_expiry/
+  ssl/vt/health с порогами и dedup-ключами, resolve при renew/clean/recovered,
+  переход порога = новое событие; severity high для VT/health-down/expiry≤7;
+  RU-шаблоны; dispatch_instant по резолверу каналов; evaluate_after_check/
+  after_healthcheck читают последние результаты); интеграция в актор после каждой
+  проверки; страница /alerts (активные события по скоупу). Тесты: 120 (fire-once/
+  no-spam, переход порога→новое событие, high≤7, resolve при renew, VT high→
+  resolve, health down→recovered, dispatch instant). Проверено в Docker:
+  near-expiry → high expiry-событие (days=4), видно на /alerts.
 
 - [ ] **T13. Daily digest.**
   Сборка сводки по каналу (истекающие домены/SSL, активные VT, health down),
