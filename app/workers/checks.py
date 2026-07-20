@@ -38,6 +38,12 @@ async def _run(check_type: str, domain_id: int) -> None:
                 log.info("vt check domain=%s → %s", domain_id, status)
             else:
                 log.info("check type %s not implemented yet (domain=%s)", check_type, domain_id)
+                return
+
+            # Evaluate alert rules for this check and dispatch instant alerts.
+            from app.services.alerts import evaluate_after_check
+
+            await evaluate_after_check(session, redis, domain_id, check_type)
     finally:
         await redis.aclose()
 
@@ -62,6 +68,15 @@ async def _run_healthcheck(healthcheck_id: int) -> None:
                 outcome.ok,
                 outcome.transition,
             )
+            if outcome.transition:
+                from app.models.healthcheck import HealthCheck
+                from app.services.alerts import evaluate_after_healthcheck
+
+                hc = await session.get(HealthCheck, healthcheck_id)
+                if hc is not None:
+                    await evaluate_after_healthcheck(
+                        session, redis, hc.domain_id, healthcheck_id, outcome.transition
+                    )
     finally:
         await redis.aclose()
 

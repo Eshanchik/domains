@@ -5,6 +5,7 @@ Importing the model modules here ensures every table is registered on
 """
 
 from app.db import Base
+from app.models.alert import AlertEvent, AlertRule
 from app.models.audit import AuditLog
 from app.models.check import CheckSchedule, CheckType
 from app.models.check_result import CheckResult, CheckStatus
@@ -40,4 +41,6 @@ __all__ = [
     "HealthCheckResult",
     "NotificationChannel",
     "NotificationLog",
+    "AlertRule",
+    "AlertEvent",
 ]
