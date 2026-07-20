@@ -7,15 +7,33 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
+from app.config import settings
 from app.db import SessionLocal, get_redis
 from app.log import configure_logging
 from app.scheduler.service import backfill_schedules, enqueue_due, enqueue_due_healthchecks
+
+KYIV = ZoneInfo(settings.timezone)
 
 log = logging.getLogger("scheduler")
 
 TICK_SECONDS = 30
 BACKFILL_EVERY_TICKS = 10  # backfill roughly every 5 minutes
+
+
+async def _run_digests(session, redis) -> list[int]:
+    from app.services.digest import run_digests
+    from app.workers.checks import send_notification
+
+    now_kyiv = datetime.now(KYIV)
+    return await run_digests(
+        session,
+        redis,
+        now_kyiv=now_kyiv,
+        send=lambda cid, text: send_notification.send(cid, text, None),
+    )
 
 
 async def _run() -> None:
@@ -32,10 +50,13 @@ async def _run() -> None:
                             log.info("backfilled %d schedules", created)
                     dispatched = await enqueue_due(session, redis)
                     hc_dispatched = await enqueue_due_healthchecks(session, redis)
+                    digested = await _run_digests(session, redis)
                 if dispatched:
                     log.info("enqueued %d checks", len(dispatched))
                 if hc_dispatched:
                     log.info("enqueued %d health-checks", len(hc_dispatched))
+                if digested:
+                    log.info("sent %d digests", len(digested))
             except Exception:  # noqa: BLE001 — never let the loop die
                 log.exception("scheduler tick failed")
             tick += 1

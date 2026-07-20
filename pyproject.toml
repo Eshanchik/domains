@@ -20,6 +20,7 @@ dependencies = [
     "dramatiq[redis]>=1.17",
     "python-whois>=0.9.4",
     "cryptography>=42.0",
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
