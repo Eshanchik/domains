@@ -84,6 +84,19 @@ async def _resolve(
         ev.resolved_at = now
 
 
+async def resolve_event(
+    session: AsyncSession, event_id: int, *, now: datetime | None = None
+) -> bool:
+    """Manually resolve one active alert event by id. Returns True if it was active."""
+    ev = await session.get(AlertEvent, event_id)
+    if ev is None or ev.state != "active":
+        return False
+    ev.state = "resolved"
+    ev.resolved_at = now or datetime.now(UTC)
+    await session.commit()
+    return True
+
+
 async def evaluate_expiry(
     session: AsyncSession, domain: Domain, *, now: datetime | None = None
 ) -> list[AlertEvent]:
