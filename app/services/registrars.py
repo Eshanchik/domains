@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.base import ConnectorError, RegistrarConnector, RegistrarDomain
+from app.connectors.godaddy import GoDaddyConnector
 from app.connectors.namecheap import NamecheapConnector
 from app.core import crypto
 from app.core.audit import record_audit
@@ -50,18 +51,21 @@ async def _get_or_create_registrar(
     return reg
 
 
-async def create_namecheap_account(
+# Registrar display names per connector type.
+REGISTRAR_NAMES = {"namecheap": "Namecheap", "godaddy": "GoDaddy"}
+
+
+async def create_account(
     session: AsyncSession,
     *,
+    connector_type: str,
     label: str,
-    api_user: str,
-    api_key: str,
-    username: str,
-    client_ip: str,
+    creds: dict,
     actor_id: int,
 ) -> RegistrarAccount:
-    registrar = await _get_or_create_registrar(session, "Namecheap", "namecheap")
-    creds = {"api_user": api_user, "api_key": api_key, "username": username, "client_ip": client_ip}
+    """Create a registrar account of any supported connector type (encrypted creds)."""
+    name = REGISTRAR_NAMES.get(connector_type, connector_type.title())
+    registrar = await _get_or_create_registrar(session, name, connector_type)
     account = RegistrarAccount(
         registrar_id=registrar.id,
         label=label,
@@ -75,11 +79,52 @@ async def create_namecheap_account(
         action="create",
         entity_type="registrar_account",
         entity_id=account.id,
-        diff={"label": label, "registrar": "Namecheap"},
+        diff={"label": label, "registrar": name},
     )
     await session.commit()
     await session.refresh(account)
     return account
+
+
+async def create_namecheap_account(
+    session: AsyncSession,
+    *,
+    label: str,
+    api_user: str,
+    api_key: str,
+    username: str,
+    client_ip: str,
+    actor_id: int,
+) -> RegistrarAccount:
+    return await create_account(
+        session,
+        connector_type="namecheap",
+        label=label,
+        creds={
+            "api_user": api_user,
+            "api_key": api_key,
+            "username": username,
+            "client_ip": client_ip,
+        },
+        actor_id=actor_id,
+    )
+
+
+async def create_godaddy_account(
+    session: AsyncSession,
+    *,
+    label: str,
+    api_key: str,
+    api_secret: str,
+    actor_id: int,
+) -> RegistrarAccount:
+    return await create_account(
+        session,
+        connector_type="godaddy",
+        label=label,
+        creds={"api_key": api_key, "api_secret": api_secret},
+        actor_id=actor_id,
+    )
 
 
 async def delete_account(
@@ -97,6 +142,12 @@ async def delete_account(
     await session.commit()
 
 
+async def account_type_labels(session: AsyncSession) -> dict[int, str]:
+    """Map registrar_id → display name, for showing an account's registrar in the UI."""
+    rows = await session.execute(select(Registrar.id, Registrar.name))
+    return dict(rows.all())
+
+
 def account_masked_ip(account: RegistrarAccount) -> str:
     """Return the (non-secret) client IP for display; secrets stay masked."""
     if not account.credentials_enc:
@@ -107,14 +158,27 @@ def account_masked_ip(account: RegistrarAccount) -> str:
         return ""
 
 
-def build_connector(account: RegistrarAccount) -> RegistrarConnector:
+def build_connector(connector_type: str, creds: dict) -> RegistrarConnector:
+    """Instantiate the right connector for ``connector_type`` from decrypted creds."""
+    if connector_type == "namecheap":
+        return NamecheapConnector(
+            api_user=creds["api_user"],
+            api_key=creds["api_key"],
+            username=creds["username"],
+            client_ip=creds["client_ip"],
+        )
+    if connector_type == "godaddy":
+        return GoDaddyConnector(api_key=creds["api_key"], api_secret=creds["api_secret"])
+    raise ConnectorError(f"unsupported connector type: {connector_type}")
+
+
+async def build_account_connector(
+    session: AsyncSession, account: RegistrarAccount
+) -> RegistrarConnector:
+    registrar = await session.get(Registrar, account.registrar_id)
+    connector_type = registrar.connector_type if registrar else "namecheap"
     creds = json.loads(crypto.decrypt(account.credentials_enc))
-    return NamecheapConnector(
-        api_user=creds["api_user"],
-        api_key=creds["api_key"],
-        username=creds["username"],
-        client_ip=creds["client_ip"],
-    )
+    return build_connector(connector_type, creds)
 
 
 # --- Sync --------------------------------------------------------------------
@@ -137,7 +201,7 @@ async def sync_account(
     """Pull the account's domains: update existing (manual-safe), stage new ones."""
     ts = now or datetime.now(UTC)
     report = SyncReport()
-    conn = connector or build_connector(account)
+    conn = connector or await build_account_connector(session, account)
     try:
         domains = await conn.list_domains()
     except ConnectorError as exc:

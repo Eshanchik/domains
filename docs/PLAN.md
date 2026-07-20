@@ -288,7 +288,13 @@
 
 ## Фаза 2
 
-- [ ] **T18. Коннектор GoDaddy** (через тот же интерфейс).
+- [x] **T18. Коннектор GoDaddy** (через тот же интерфейс). _(2026-07-21)_
+  `connectors/godaddy` (GET /v1/domains, sso-key auth, marker-пагинация, parse
+  expires/renewAuto, 401/403/429/5xx→ConnectorError); сервис регистраторов
+  обобщён (create_account по connector_type, build_connector диспатчит namecheap/
+  godaddy, build_account_connector по registrar.connector_type); UI /registrars —
+  отдельная форма GoDaddy + колонка «Регистратор». Тесты: 153 (godaddy parse/
+  pagination/auth/sso-key header, dispatch на GoDaddyConnector, creds зашифрованы).
 - [ ] **T19. DNS/NS-мониторинг** (резолвинг A/AAAA/NS/MX, алерт на смену NS).
 - [ ] **T20. Каналы Slack, Discord, generic Webhook.**
 - [ ] **T21. API-токены + исходящие вебхуки на события.**
