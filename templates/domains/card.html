@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ domain.fqdn }} — DomainGuard{% endblock %}
+{% block content %}
+<div class="mb-4 flex items-center justify-between">
+  <h1 class="text-lg font-semibold font-mono">{{ domain.fqdn }}</h1>
+  {% if user.role.value in ("admin", "manager") %}
+  <div class="flex gap-2 text-sm">
+    <a href="/domains/{{ domain.id }}/edit" class="rounded border px-3 py-1 hover:bg-gray-100">Изменить</a>
+    <form method="post" action="/domains/{{ domain.id }}/archive">
+      <input type="hidden" name="archived" value="{{ 'false' if not domain.is_active else 'true' }}" />
+      <button type="submit" class="rounded border px-3 py-1 hover:bg-gray-100">
+        {{ 'Вернуть из архива' if not domain.is_active else 'В архив' }}
+      </button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<dl class="mb-6 grid grid-cols-2 gap-x-6 gap-y-1 text-sm md:grid-cols-3">
+  <div><dt class="text-gray-500">Проект</dt><dd>{{ project.name if project else domain.project_id }}</dd></div>
+  <div><dt class="text-gray-500">TLD</dt><dd>{{ domain.tld }}</dd></div>
+  <div><dt class="text-gray-500">Punycode</dt><dd class="font-mono">{{ domain.punycode }}</dd></div>
+  <div><dt class="text-gray-500">Истекает</dt><dd>{{ domain.expiry_date.strftime('%Y-%m-%d') if domain.expiry_date else '—' }}</dd></div>
+  <div><dt class="text-gray-500">Auto-renew</dt><dd>{{ {none:'неизвестно', true:'да', false:'нет'}[domain.auto_renew] }}</dd></div>
+  <div><dt class="text-gray-500">Активен</dt><dd>{{ 'да' if domain.is_active else 'нет' }}</dd></div>
+  <div><dt class="text-gray-500">Nameservers</dt><dd>{{ domain.nameservers | join(', ') or '—' }}</dd></div>
+  <div><dt class="text-gray-500">Теги</dt><dd>{{ domain.tags | map(attribute='name') | join(', ') or '—' }}</dd></div>
+  <div><dt class="text-gray-500">Цена продления</dt><dd>{{ domain.renewal_price ~ ' ' ~ domain.renewal_currency if domain.renewal_price else '—' }}</dd></div>
+</dl>
+
+{# Вкладки-каркас: наполняются по мере готовности модулей (T07+). #}
+<div class="border-b text-sm">
+  <nav class="flex gap-4">
+    <span class="border-b-2 border-gray-900 pb-2 font-medium">Изменения</span>
+    <span class="pb-2 text-gray-400">Проверки</span>
+    <span class="pb-2 text-gray-400">Health-checks</span>
+    <span class="pb-2 text-gray-400">Платежи</span>
+    <span class="pb-2 text-gray-400">Алерты</span>
+  </nav>
+</div>
+
+<div class="mt-4">
+  <h2 class="mb-2 text-sm font-medium text-gray-600">История изменений полей</h2>
+  <table class="w-full border-collapse text-sm">
+    <thead>
+      <tr class="border-b text-left text-gray-500">
+        <th class="py-1">Когда</th><th class="py-1">Поле</th><th class="py-1">Было</th><th class="py-1">Стало</th><th class="py-1">Источник</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for h in domain.history %}
+      <tr class="border-b">
+        <td class="py-1">{{ h.changed_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="py-1">{{ h.field }}</td>
+        <td class="py-1 text-gray-500">{{ h.old or '—' }}</td>
+        <td class="py-1">{{ h.new or '—' }}</td>
+        <td class="py-1">{{ h.source }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="py-3 text-gray-500">Изменений пока нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

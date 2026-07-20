@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Домены — DomainGuard{% endblock %}
+{% block content %}
+<div class="mb-4 flex items-center justify-between">
+  <h1 class="text-lg font-semibold">Домены <span class="text-sm text-gray-500">({{ total }})</span></h1>
+  {% if user.role.value in ("admin", "manager") %}
+    <a href="/domains/new" class="rounded bg-gray-900 px-3 py-2 text-sm text-white hover:bg-gray-700">Добавить</a>
+  {% endif %}
+</div>
+
+<form method="get" action="/domains" class="mb-4 flex flex-wrap items-end gap-2 text-sm">
+  <input name="q" value="{{ f.q or '' }}" placeholder="Поиск по домену" class="rounded border px-2 py-1" />
+  <select name="company_id" class="rounded border px-2 py-1">
+    <option value="">Все компании</option>
+    {% for c in companies %}<option value="{{ c.id }}" {{ 'selected' if f.company_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <select name="project_id" class="rounded border px-2 py-1">
+    <option value="">Все проекты</option>
+    {% for p in projects %}<option value="{{ p.id }}" {{ 'selected' if f.project_id == p.id else '' }}>{{ p.name }}</option>{% endfor %}
+  </select>
+  <select name="tag" class="rounded border px-2 py-1">
+    <option value="">Все теги</option>
+    {% for t in tags %}<option value="{{ t.name }}" {{ 'selected' if f.tag == t.name else '' }}>{{ t.name }}</option>{% endfor %}
+  </select>
+  <select name="expiring" class="rounded border px-2 py-1">
+    <option value="">Истекает: любой</option>
+    {% for d in [7, 30, 90] %}<option value="{{ d }}" {{ 'selected' if f.expiring == d else '' }}>≤ {{ d }} дн.</option>{% endfor %}
+  </select>
+  <label class="flex items-center gap-1"><input type="checkbox" name="archived" value="true" {{ 'checked' if f.archived else '' }} /> архив</label>
+  <button type="submit" class="rounded bg-gray-200 px-3 py-1 hover:bg-gray-300">Фильтр</button>
+  <a href="/domains/export.csv?{{ request.url.query }}" class="rounded border px-3 py-1 hover:bg-gray-100">Экспорт CSV</a>
+</form>
+
+<form method="post" action="/domains/bulk">
+<table class="w-full border-collapse text-sm">
+  <thead>
+    <tr class="border-b text-left text-gray-600">
+      <th class="py-2"></th>
+      <th class="py-2"><a href="?sort=fqdn&dir={{ 'desc' if f.sort=='fqdn' and f.dir=='asc' else 'asc' }}">Домен</a></th>
+      <th class="py-2">Проект</th>
+      <th class="py-2"><a href="?sort=expiry_date&dir={{ 'desc' if f.sort=='expiry_date' and f.dir=='asc' else 'asc' }}">Истекает</a></th>
+      <th class="py-2">Теги</th>
+      <th class="py-2">Активен</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in domains %}
+    <tr class="border-b">
+      <td class="py-2"><input type="checkbox" name="ids" value="{{ d.id }}" /></td>
+      <td class="py-2"><a href="/domains/{{ d.id }}" class="text-blue-600 hover:underline">{{ d.fqdn }}</a></td>
+      <td class="py-2">{{ d.project_id }}</td>
+      <td class="py-2">{{ d.expiry_date.strftime('%Y-%m-%d') if d.expiry_date else '—' }}</td>
+      <td class="py-2">{% for t in d.tags %}<span class="rounded bg-gray-100 px-1">{{ t.name }}</span> {% endfor %}</td>
+      <td class="py-2">{{ 'да' if d.is_active else 'нет' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="py-4 text-gray-500">Домены не найдены.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if user.role.value in ("admin", "manager") and domains %}
+<div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+  <select name="action" class="rounded border px-2 py-1">
+    <option value="add_tags">Добавить теги</option>
+    <option value="assign_project">Назначить проект</option>
+    <option value="archive">В архив</option>
+    <option value="unarchive">Из архива</option>
+  </select>
+  <input name="tags" placeholder="теги через запятую" class="rounded border px-2 py-1" />
+  <select name="project_id" class="rounded border px-2 py-1">
+    <option value="">проект…</option>
+    {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="rounded bg-gray-900 px-3 py-1 text-white hover:bg-gray-700">Применить к выбранным</button>
+</div>
+{% endif %}
+</form>
+
+{% if pages > 1 %}
+<div class="mt-4 flex gap-2 text-sm">
+  {% for pnum in range(1, pages + 1) %}
+    <a href="?page={{ pnum }}&sort={{ f.sort }}&dir={{ f.dir }}"
+       class="rounded border px-2 py-1 {{ 'bg-gray-900 text-white' if pnum == page else '' }}">{{ pnum }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

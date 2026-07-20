@@ -58,12 +58,24 @@
   по скоупу, теги). Проверено в Docker: seed (идемпотентен), страницы компаний/
   проектов/тегов через nginx, viewer→403 на создание компании.
 
-- [ ] **T04. Домены: модель и CRUD.**
+- [x] **T04. Домены: модель и CRUD.** _(2026-07-20)_
   Модель Domain (+punycode/tld нормализация, field_sources, ssl_extra_hosts),
   DomainFieldHistory; карточка домена (каркас с вкладками); таблица со
   скоупами, фильтрами (компания/проект/тег/регистратор), поиском, пагинацией,
   сортировкой; bulk-операции (проект/теги/архив); экспорт CSV.
   Тесты: дедуп FQDN, IDN, история изменений полей.
+  _Сделано:_ модели Domain/DomainTag/DomainFieldHistory (+миграция); нормализация
+  FQDN/IDN через `idna` (`core/fqdn`, каноничная unicode-форма + punycode + tld,
+  дедуп unicode↔punycode); сервис: create с дедупом, update с записью
+  DomainFieldHistory для tracked-полей и `field_sources` (manual-приоритет),
+  архив, bulk (проект/теги/архив со scope-проверкой), список со scope+фильтрами+
+  поиском+пагинацией+сортировкой, CSV-экспорт; web: таблица с фильтрами/bulk/
+  экспортом, форма, карточка с вкладками-каркасом и историей (history грузится
+  eager — иначе lazy-load в шаблоне → MissingGreenlet). registrar_id/
+  registrar_account_id — пока без FK (T16). Тесты: 46 (норм./IDN unit, дедуп,
+  IDN-дедуп, история+рендер карточки, scope-фильтр, RBAC/scope на создание,
+  bulk-архив, CSV). Проверено в Docker: создание everness.online, карточка 200,
+  история, CSV, IDN-дедуп.
 
 - [ ] **T05. Импорт: single / bulk / CSV.**
   Ручное добавление; bulk-textarea (по строке); CSV-импорт (формат из SPEC §3.2)
