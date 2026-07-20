@@ -238,11 +238,19 @@
   доменов сгенерированы за ~3с; дашборд рендерится **0.034с**, таблица 0.057с
   (< 1с приёмка).
 
-- [ ] **T15. Учёт стоимости.**
+- [x] **T15. Учёт стоимости.** _(2026-07-20)_
   Поля цены у домена; Payment CRUD (в карточке + при CSV-импорте);
   клиент API курсов с кэшем + ручное переопределение, фиксация rate_to_usd;
   сводка расходов по компании/проекту/регистратору за период; прогноз
   ближайших продлений. Тесты: конвертация, сводки, недоступность API курсов.
+  _Сделано:_ модель Payment (+миграция, фиксирует rate_to_usd/amount_usd);
+  `services/rates` (exchangerate.host, кэш per (currency,day) в Redis, USD=1,
+  сбой API→None); `services/payments` (add_payment: USD→1 / override / авто-курс,
+  RateUnavailableError; cost_summary по company/project/registrar за период со
+  скоупом; upcoming_renewals ≤N дней с ценой); web: платежи в карточке (список+
+  форма) и страница /costs (сводка + прогноз). Тесты: 136 (rate USD/fetch+cache/
+  API-fail, payment USD/EUR/override/rate-unavailable, summary, forecast).
+  Проверено в Docker: USD 12.50 и UAH 500@0.025 → оба $12.50, итог /costs = 25.00.
 
 - [ ] **T16. Коннектор Namecheap + аккаунты регистраторов.**
   Registrar/RegistrarAccount (credentials шифрованы, маскирование в UI/логах);
