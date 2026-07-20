@@ -1,0 +1,113 @@
+# DomainGuard local/production stack. `docker compose up` brings up the full system
+# from scratch; the only manual step is providing a `.env` (copy from .env.example).
+name: domainguard
+
+x-app-env: &app-env
+  DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://domainguard:domainguard@postgres:5432/domainguard}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  DG_MASTER_KEY: ${DG_MASTER_KEY:-}
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  TIMEZONE: ${TIMEZONE:-Europe/Kyiv}
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-domainguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-domainguard}
+      POSTGRES_DB: ${POSTGRES_DB:-domainguard}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-domainguard}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # One-shot: apply migrations before api/worker/scheduler start.
+  migrate:
+    build:
+      context: .
+    command: ["migrate"]
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+    command: ["api"]
+    environment:
+      <<: *app-env
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+    command: ["worker"]
+    environment:
+      <<: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+    command: ["scheduler"]
+    environment:
+      <<: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

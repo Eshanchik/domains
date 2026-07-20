@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+# Container entrypoint. Selects the process to run based on the first argument so a
+# single image backs the api / worker / scheduler / migrate services.
+set -eu
+
+role="${1:-api}"
+
+case "$role" in
+  api)
+    exec uvicorn app.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"
+    ;;
+  worker)
+    exec python -m app.workers.main
+    ;;
+  scheduler)
+    exec python -m app.scheduler.main
+    ;;
+  migrate)
+    exec alembic upgrade head
+    ;;
+  *)
+    # Fall through to an arbitrary command (e.g. a shell for debugging).
+    exec "$@"
+    ;;
+esac
