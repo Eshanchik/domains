@@ -271,11 +271,20 @@
   зашифрованы). Проверено в Docker: аккаунт (creds зашифрованы), синк против
   реального Namecheap с плохим ключом → graceful error; assign создаёт домен.
 
-- [ ] **T17. Retention, метрики, полировка MVP.**
+- [x] **T17. Retention, метрики, полировка MVP.** _(2026-07-20)_
   Фоновая чистка партиций >12 мес.; Prometheus-эндпоинт (глубина очередей,
   задержки проверок, ошибки внешних API, срабатывания circuit breaker);
   структурные JSON-логи; прогон всех AC из SPEC §10; README (установка,
   .env, первый запуск, whitelist IP для Namecheap); опциональный скрипт pg_dump.
+  _Сделано:_ `services/retention` (drop_old_partitions по pg_inherits >12 мес.,
+  prune_health_results, run_retention) + ежедневный запуск в scheduler (~03:00
+  Kyiv, идемпотентно); `/metrics` (Prometheus-текст: dg_domains_total,
+  dg_active_alerts_total, circuit_breaker open/failures по сервисам);
+  JSON-логи включены в app factory (`configure_logging`); README расширен
+  (первый запуск, внешние интеграции, whitelist IP Namecheap, наблюдаемость,
+  бэкапы); `scripts/pg_dump.sh`. Тесты: 148 (retention drop/prune/ensure,
+  /metrics). Проверено в Docker: `docker compose up` с нуля — все сервисы healthy,
+  /metrics/healthz/readyz 200.
 
 ## Фаза 2
 
@@ -292,4 +301,8 @@
 
 ## Backlog / находки
 
-- (пусто — пополняется в процессе)
+- Точная глубина очередей Dramatiq и латентность проверок в `/metrics` — требуют
+  инструментации акторов; пока экспонируются counts + состояние circuit breaker.
+- Uvicorn access-логи не в JSON (свой логгер); логи приложения/воркеров/планировщика — JSON.
+- `health_check_results` — обычная таблица с retention через DELETE; при росте можно
+  партиционировать по месяцам как `check_result`.

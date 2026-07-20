@@ -32,6 +32,36 @@ make up                     # собрать и поднять весь стек
 Сервисы compose: `nginx`, `api`, `worker`, `scheduler`, `postgres`, `redis`
 (+ одноразовый `migrate`).
 
+## Первый запуск
+
+1. `cp .env.example .env` и **обязательно** задать `DG_MASTER_KEY` (Fernet-ключ,
+   см. раздел «Секреты») и `DG_ADMIN_PASSWORD`.
+2. `make up` — поднимет весь стек и применит миграции.
+3. `make create-admin` — создаст первого администратора из `DG_ADMIN_*`.
+4. Зайти на http://localhost:8080, войти под админом.
+5. В разделе **Настройки** задать (опционально) ключ VirusTotal и токен Telegram-бота.
+6. В разделе **Каналы** добавить Telegram-канал (chat_id группы) и уровень (global/company/project).
+7. Завести компании/проекты, затем домены (вручную, bulk, CSV или синком Namecheap).
+
+## Внешние интеграции
+
+- **VirusTotal** — free-ключ (4 запроса/мин, 500/день); задаётся в Настройках. Без ключа VT-проверки не выполняются.
+- **Telegram** — один бот, токен в Настройках; каналы указывают `chat_id`. Без токена алерты не отправляются (видны в UI/логах).
+- **Namecheap** — раздел «Регистраторы»: `ApiUser`, `ApiKey`, `UserName` и **whitelisted IP** сервера
+  (в Namecheap: Profile → Tools → API Access → Whitelisted IPs добавить внешний IP сервера).
+- **API курсов валют** — exchangerate.host (без ключа на MVP), кэш на сутки; курс можно переопределить вручную при вводе платежа.
+
+## Наблюдаемость
+
+- Логи — структурные JSON (stdout).
+- Метрики Prometheus — `GET /metrics` (кол-во доменов, активные алерты, состояние circuit breaker по сервисам).
+- `GET /healthz` (liveness), `GET /readyz` (Postgres+Redis).
+
+## Бэкапы
+
+Основной способ — снапшоты DigitalOcean. Дополнительно есть скрипт дампа:
+`bash scripts/pg_dump.sh` (пишет `dump-YYYYmmdd-HHMM.sql.gz`; автоматизировать не требуется).
+
 ## Разработка (локально, без Docker)
 
 Требуется Python 3.12 и доступные Postgres/Redis (можно поднять только их через
