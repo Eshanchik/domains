@@ -57,6 +57,25 @@ async def require_user(
     return user
 
 
+async def api_user(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> User:
+    """Authenticate a REST API request via ``Authorization: Bearer <token>``."""
+    from app.services import api_tokens
+
+    header = request.headers.get("Authorization", "")
+    token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+    user = await api_tokens.resolve_user(session, token)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid or missing API token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
 def require_role(*roles: Role):
     """Dependency factory enforcing that the user has one of ``roles``.
 

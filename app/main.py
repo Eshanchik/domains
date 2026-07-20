@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import health, metrics
+from app.api import health, metrics, v1
 from app.config import settings
 from app.deps import NotAuthenticated
 from app.log import configure_logging
@@ -25,7 +25,9 @@ from app.web import healthchecks as web_healthchecks
 from app.web import import_web, settings_web
 from app.web import payments as web_payments
 from app.web import registrars as web_registrars
+from app.web import tokens as web_tokens
 from app.web import users as web_users
+from app.web import webhooks as web_webhooks
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -46,6 +48,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(metrics.router)
+    app.include_router(v1.router)
     app.include_router(web_auth.router)
     app.include_router(web_users.router)
     app.include_router(web_companies.router)
@@ -57,6 +60,8 @@ def create_app() -> FastAPI:
     app.include_router(web_alerts.router)
     app.include_router(web_payments.router)
     app.include_router(web_registrars.router)
+    app.include_router(web_tokens.router)
+    app.include_router(web_webhooks.router)
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

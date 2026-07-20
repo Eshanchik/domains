@@ -35,6 +35,10 @@
         </div>
         {% if user %}
           <div class="flex items-center gap-3 text-sm">
+            <a href="/tokens" class="text-gray-600 hover:text-gray-900">API-токены</a>
+            {% if user.role.value == "admin" %}
+              <a href="/webhooks" class="text-gray-600 hover:text-gray-900">Вебхуки</a>
+            {% endif %}
             <span class="text-gray-600">{{ user.login }} ({{ user.role.value }})</span>
             <form method="post" action="/logout">
               <button type="submit" class="text-gray-600 hover:text-gray-900">Выйти</button>

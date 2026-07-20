@@ -311,7 +311,15 @@
   UI /channels — селектор типа + поле webhook_url, показ типа/назначения (host
   без токена). Тесты: 166 (payload-формы, success/204/429-500-503→transient/4xx,
   отправка через slack-вебхук, скрытие токена в target). Без миграции.
-- [ ] **T21. API-токены + исходящие вебхуки на события.**
+- [x] **T21. API-токены + исходящие вебхуки на события.** _(2026-07-21)_
+  Модели ApiToken (SHA-256 hash, префикс, revoke) и WebhookEndpoint (URL, секрет
+  шифрован, фильтр событий) + миграция; `services/api_tokens` (create→plaintext
+  один раз, resolve_user по хешу, last_used); Bearer-auth `deps.api_user`; REST
+  `/api/v1` (me/domains/alerts, токен-auth, скоуп); `services/webhooks` (deliver с
+  HMAC-подписью `X-DomainGuard-Signature`, фильтр по kind); актор `deliver_webhooks`
+  + фан-аут в worker на новые AlertEvent; UI /tokens (свои токены) и /webhooks
+  (admin). Тесты: 175 (token auth valid/invalid/revoked/scoped API, webhook
+  sign/filter/secret-encrypted/delete).
 - [ ] **T22. 2FA (TOTP) для admin; наблюдаемость (Grafana-дэшборды).**
 
 ## Фаза 3
