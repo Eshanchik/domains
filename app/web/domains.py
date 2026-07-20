@@ -98,6 +98,8 @@ async def domains_list(
     companies = await companies_svc.list_companies(session, user)
     projects = await companies_svc.list_projects(session, user)
     tags = await companies_svc.list_tags(session)
+    project_names = {p.id: p.name for p in projects}
+    ssl = await svc.ssl_status_map(session, [d.id for d in items])
     pages = max(1, (total + flt.page_size - 1) // flt.page_size)
     return templates.TemplateResponse(
         request,
@@ -110,6 +112,8 @@ async def domains_list(
             "pages": pages,
             "companies": companies,
             "projects": projects,
+            "project_names": project_names,
+            "ssl": ssl,
             "tags": tags,
             "f": {
                 "company_id": company_id,
@@ -317,6 +321,19 @@ async def domain_update(
     )
     await svc.update_domain(session, domain, data, actor_id=user.id)
     return RedirectResponse(f"/domains/{domain_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/domains/{domain_id}/check")
+async def domain_check_now(
+    domain_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(manager_required),
+):
+    """Enqueue all default checks for one domain now (row action, Manager+)."""
+    domain = await svc.get_domain(session, domain_id)
+    if domain is not None and await _visible(session, user, domain):
+        await svc.request_immediate_checks(session, domain, actor_id=user.id)
+    return RedirectResponse("/domains", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/domains/{domain_id}/archive")

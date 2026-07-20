@@ -161,3 +161,126 @@ def test_bulk_archive_and_csv_export(
     page = client.get("/domains")
     assert "one.com" not in page.text
     assert "two.com" in page.text
+
+
+# --- T25: list columns (project name, SSL, auto-renew) + row actions -----------
+
+
+def _add_ssl(domain_id: int, *, valid_to=None, error=None) -> None:
+    from app.models.ssl_certificate import SslCertificate
+
+    async def _c() -> None:
+        async with SessionLocal() as s:
+            s.add(SslCertificate(domain_id=domain_id, host="h", valid_to=valid_to, error=error))
+            await s.commit()
+
+    _run(_c())
+
+
+def test_ssl_status_map_classifies_latest_cert(make_company, make_project, make_domain) -> None:
+    from datetime import timedelta
+
+    from app.services import domains as svc
+
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    now = datetime.now(UTC)
+    ok = make_domain(proj, fqdn="ok.com")
+    soon = make_domain(proj, fqdn="soon.com")
+    expired = make_domain(proj, fqdn="expired.com")
+    broken = make_domain(proj, fqdn="broken.com")
+    none = make_domain(proj, fqdn="none.com")
+    _add_ssl(ok, valid_to=now + timedelta(days=90))
+    _add_ssl(soon, valid_to=now + timedelta(days=5))
+    _add_ssl(expired, valid_to=now - timedelta(days=1))
+    _add_ssl(broken, error="handshake failed")
+
+    async def _c():
+        async with SessionLocal() as s:
+            return await svc.ssl_status_map(s, [ok, soon, expired, broken, none])
+
+    m = _run(_c())
+    assert m[ok] == ("ok", "green")
+    assert m[soon] == ("скоро", "amber")
+    assert m[expired] == ("истёк", "red")
+    assert m[broken] == ("проблема", "red")
+    assert none not in m  # no observation → omitted, list shows «—»
+
+
+def test_request_immediate_checks_enqueues_and_audits(
+    make_user, make_company, make_project, make_domain
+) -> None:
+    from sqlalchemy import select
+
+    from app.models.audit import AuditLog
+    from app.models.domain import Domain
+    from app.services import domains as svc
+
+    actor = make_user(login="root", password="password123", role=Role.admin)
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    did = make_domain(proj, fqdn="chk.com")
+    sent: list[tuple[int, str]] = []
+
+    async def _c():
+        async with SessionLocal() as s:
+            dom = await s.get(Domain, did)
+            types = await svc.request_immediate_checks(
+                s, dom, actor_id=actor["id"], send=lambda d, t: sent.append((d, t))
+            )
+            audit = (
+                (await s.execute(select(AuditLog).where(AuditLog.action == "check_now")))
+                .scalars()
+                .all()
+            )
+            return types, audit
+
+    types, audit = _run(_c())
+    assert set(types) == {"rdap", "ssl", "vt", "dns"}
+    assert sorted(sent) == sorted((did, t) for t in types)
+    assert len(audit) == 1
+
+
+def test_domains_list_shows_new_columns(
+    client, make_user, make_company, make_project, make_domain
+) -> None:
+    from datetime import timedelta
+
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web", name="ACME Web")
+    d = make_domain(proj, fqdn="col.com", auto_renew=None)
+    _add_ssl(d, valid_to=datetime.now(UTC) + timedelta(days=200))
+    _admin(client, make_user)
+
+    page = client.get("/domains")
+    assert page.status_code == 200
+    assert "ACME Web" in page.text  # project by NAME, not id
+    assert "неизвестно" in page.text  # auto_renew=None label
+    assert "Auto-renew" in page.text  # new column header
+    assert "Проверить сейчас" in page.text  # kebab row action
+
+
+def test_check_now_endpoint_enqueues_admin_only(
+    client, make_user, make_company, make_project, make_domain, monkeypatch
+) -> None:
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    did = make_domain(proj, fqdn="run.com")
+    sent: list[tuple[int, str]] = []
+    monkeypatch.setattr(
+        "app.services.domains._default_check_sender",
+        lambda d, t: sent.append((d, t)),
+    )
+
+    # Viewer is blocked (Manager+ required) and enqueues nothing.
+    make_user(login="viewer", password="password123", role=Role.viewer)
+    _login(client, "viewer", "password123")
+    denied = client.post(f"/domains/{did}/check", follow_redirects=False)
+    assert denied.status_code == 403
+    assert sent == []
+
+    # Admin enqueues all default checks.
+    _admin(client, make_user)
+    resp = client.post(f"/domains/{did}/check", follow_redirects=False)
+    assert resp.status_code == 303
+    assert sorted(sent) == sorted((did, t) for t in ("rdap", "ssl", "vt", "dns"))
