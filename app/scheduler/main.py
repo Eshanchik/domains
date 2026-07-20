@@ -41,6 +41,22 @@ async def _run_digests(session, redis) -> list[int]:
     )
 
 
+async def _maybe_run_retention(session, redis) -> None:
+    """Run history retention once/day around 03:00 Kyiv (idempotent via Redis)."""
+    now_kyiv = datetime.now(KYIV)
+    if now_kyiv.hour != 3:
+        return
+    claimed = await redis.set(
+        f"retention:{now_kyiv.strftime('%Y%m%d')}", "1", nx=True, ex=2 * 24 * 3600
+    )
+    if not claimed:
+        return
+    from app.services.retention import run_retention
+
+    report = await run_retention(session)
+    log.info("retention run: %s", report)
+
+
 async def _run() -> None:
     redis = get_redis()
     tick = 0
@@ -57,6 +73,7 @@ async def _run() -> None:
                     hc_dispatched = await enqueue_due_healthchecks(session, redis)
                     synced = await enqueue_due_registrar_syncs(session, redis)
                     digested = await _run_digests(session, redis)
+                    await _maybe_run_retention(session, redis)
                 if dispatched:
                     log.info("enqueued %d checks", len(dispatched))
                 if hc_dispatched:

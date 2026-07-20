@@ -12,9 +12,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import health
+from app.api import health, metrics
 from app.config import settings
 from app.deps import NotAuthenticated
+from app.log import configure_logging
 from app.web import alerts as web_alerts
 from app.web import auth as web_auth
 from app.web import channels as web_channels
@@ -31,6 +32,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 def create_app() -> FastAPI:
     """Build and configure the FastAPI application."""
+    configure_logging()  # structured JSON logs (NFR-5)
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
@@ -43,6 +45,7 @@ def create_app() -> FastAPI:
         return RedirectResponse("/login", status_code=303)
 
     app.include_router(health.router)
+    app.include_router(metrics.router)
     app.include_router(web_auth.router)
     app.include_router(web_users.router)
     app.include_router(web_companies.router)
