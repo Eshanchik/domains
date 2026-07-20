@@ -70,3 +70,24 @@ async def _run_healthcheck(healthcheck_id: int) -> None:
 def run_healthcheck(healthcheck_id: int) -> None:
     """Entry point enqueued by the scheduler for a due health-check."""
     asyncio.run(_run_healthcheck(healthcheck_id))
+
+
+async def _send_notification(channel_id: int, text: str, alert_event_id: int | None) -> None:
+    redis = get_redis()
+    try:
+        async with SessionLocal() as session:
+            from app.services import notifications as notif
+
+            channel = await notif.get_channel(session, channel_id)
+            if channel is not None:
+                await notif.send_to_channel(
+                    session, redis, channel, text, alert_event_id=alert_event_id
+                )
+    finally:
+        await redis.aclose()
+
+
+@dramatiq.actor(max_retries=3, queue_name="notifications")
+def send_notification(channel_id: int, text: str, alert_event_id: int | None = None) -> None:
+    """Deliver a message to a channel (used by the alerter/digest)."""
+    asyncio.run(_send_notification(channel_id, text, alert_event_id))

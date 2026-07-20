@@ -175,12 +175,22 @@
   bulk-шаблон подставляет fqdn). Проверено в Docker на реальном
   www.forgeofreason.com/click → 302, state=up.
 
-- [ ] **T11. Каналы уведомлений: Telegram + маршрутизация.**
+- [x] **T11. Каналы уведомлений: Telegram + маршрутизация.** _(2026-07-20)_
   Плагинный интерфейс канала; Telegram-канал (общий бот из Setting,
   chat_id per-канал, config шифрован); привязка канала к company/project/global,
   режим instant/digest/both; резолвер domain→project→company→global;
   тест-отправка из UI; NotificationLog; отправка через очередь с ретраями.
   Тесты: резолвер по всем уровням, мок Bot API, ретраи при 429.
+  _Сделано:_ `channels/base` (интерфейс NotificationChannel + Channel/Transient
+  ошибки), `channels/telegram` (Bot API sendMessage, 429/5xx→transient);
+  модели NotificationChannel/NotificationLog (+миграция); `services/notifications`
+  (CRUD с шифрованием config, резолвер project→company→global с mode-фильтром
+  instant/digest, send_to_channel с retry на transient + NotificationLog); актор
+  `send_notification` (очередь notifications); UI /channels (создание с уровнем/
+  режимом, тест-отправка, удаление). Тесты: 113 (резолвер по уровням+mode,
+  send success/429-retry/not-configured/failed, config зашифрован). Проверено в
+  Docker: канал создан, config зашифрован, тест-отправка без бота — graceful
+  fail. Реальная доставка — на деплое (токен бота).
 
 - [ ] **T12. Правила алертов + события + дедуп.**
   AlertRule (условия expiry≤N, ssl≤N, vt_malicious≥1, health down/recovered;
