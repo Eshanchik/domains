@@ -1,0 +1,35 @@
+# Production overlay: TLS-terminating nginx + certbot auto-renewal.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# (Issue the initial certificate first — see docs/DEPLOY.md.)
+
+services:
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    # Reload every 6h so renewed certificates are picked up without a restart.
+    command: >-
+      /bin/sh -c "while :; do sleep 6h; nginx -s reload; done &
+      nginx -g 'daemon off;'"
+
+  # Renews certificates every 12h and lets nginx pick them up on its periodic reload.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: >-
+      /bin/sh -c 'trap exit TERM;
+      while :; do
+        certbot renew --webroot -w /var/www/certbot --quiet;
+        sleep 12h & wait $${!};
+      done'
+
+volumes:
+  certbot-etc:
+  certbot-www:
