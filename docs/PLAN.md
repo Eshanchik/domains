@@ -25,12 +25,23 @@
   `/healthz`→200, `/readyz`→`{database:ok,redis:ok}`; `ruff check`+`format`
   чисто; `pytest` 6/6 зелёные (py3.12).
 
-- [ ] **T02. Auth + пользователи + RBAC + аудит.**
+- [x] **T02. Auth + пользователи + RBAC + аудит.** _(2026-07-20)_
   Модели User/UserScope; argon2; логин/логаут (сессии, secure cookies);
   rate-limit и lockout на логин; роли Admin/Manager/Viewer; декораторы проверки
   скоупа (company/project); модель AuditLog + сервис записи; CRUD пользователей
   (admin) в UI; seed-скрипт первого админа.
   Тесты: доступ по ролям и скоупам, брутфорс-лимит.
+  _Сделано:_ модели User/UserScope/AuditLog (+ миграция); argon2
+  (`core/security`); серверные сессии в Redis (`core/sessions`, httponly/lax,
+  Secure только в prod); брутфорс-лимит с lockout (`core/login_guard`, 5 попыток
+  / 15 мин); роли Admin/Manager/Viewer; зависимости `require_user/require_role/
+  require_scope` (`app/deps`); резолвер скоупов company→все проекты, project→один;
+  аудит-сервис (`core/audit`, пароли не логируются); web-страницы: логин/логаут,
+  админ-CRUD пользователей (Jinja2/HTMX, RU); идемпотентный `scripts.create_admin`
+  из env (+ `make create-admin`). UserScope.company_id/project_id — пока int без
+  FK (FK добавятся в T03). Тесты: 22 шт. (argon2, скоупы, логин/локаут/сессии/
+  RBAC/аудит). Проверено в Docker: create-admin → логин через nginx → /users 200,
+  аноним → редирект на /login, неверный пароль → 401.
 
 ## Фаза 1 — MVP
 

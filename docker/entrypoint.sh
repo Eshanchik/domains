@@ -18,6 +18,9 @@ case "$role" in
   migrate)
     exec alembic upgrade head
     ;;
+  create-admin)
+    exec python -m scripts.create_admin
+    ;;
   *)
     # Fall through to an arbitrary command (e.g. a shell for debugging).
     exec "$@"

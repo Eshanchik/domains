@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 COMPOSE := docker compose
 
-.PHONY: help up down build logs migrate test lint fmt seed
+.PHONY: help up down build logs migrate test lint fmt seed create-admin
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -36,3 +36,6 @@ fmt: ## Auto-format with ruff
 
 seed: ## Seed demo data (2 companies, projects, sample domains)
 	$(COMPOSE) run --rm api python -m scripts.seed
+
+create-admin: ## Create the first admin (uses DG_ADMIN_* env vars)
+	$(COMPOSE) run --rm api python -m scripts.create_admin

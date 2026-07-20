@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
@@ -24,11 +25,14 @@ class Base(DeclarativeBase):
     """Declarative base shared by all ORM models (used as Alembic target metadata)."""
 
 
-engine: AsyncEngine = create_async_engine(
-    str(settings.database_url),
-    pool_pre_ping=True,
-    future=True,
-)
+# Under tests each TestClient spins its own event loop; a pooled connection bound to
+# a previous loop would raise "Event loop is closed". NullPool sidesteps that by
+# opening a fresh connection per checkout. Production keeps the default pool.
+_engine_kwargs: dict = {"pool_pre_ping": True, "future": True}
+if settings.environment == "test":
+    _engine_kwargs = {"future": True, "poolclass": NullPool}
+
+engine: AsyncEngine = create_async_engine(str(settings.database_url), **_engine_kwargs)
 
 SessionLocal = async_sessionmaker(
     bind=engine,
