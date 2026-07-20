@@ -320,7 +320,16 @@
   + фан-аут в worker на новые AlertEvent; UI /tokens (свои токены) и /webhooks
   (admin). Тесты: 175 (token auth valid/invalid/revoked/scoped API, webhook
   sign/filter/secret-encrypted/delete).
-- [ ] **T22. 2FA (TOTP) для admin; наблюдаемость (Grafana-дэшборды).**
+- [x] **T22. 2FA (TOTP) для admin; наблюдаемость (Grafana-дэшборды).** _(2026-07-21)_
+  2FA: поля User.totp_secret_enc (шифрован) + totp_enabled (+миграция с
+  server_default для существующих строк); `services/twofa` (pyotp: секрет,
+  provisioning URI, verify, begin/enable/disable); интеграция в `authenticate`
+  (totp_required/totp_invalid, брутфорс-счётчик на неверный код); login-форма с
+  полем кода + self-service страница /2fa (QR-секрет, включить/отключить).
+  Наблюдаемость: `docker-compose.observability.yml` (Prometheus скрейпит /metrics
+  + Grafana), `monitoring/` (prometheus.yml, provisioning datasource/dashboards,
+  дашборд domainguard.json). Тесты: 180 (verify, enable-требует-код, секрет
+  зашифрован, login 2-факторный поток, без-2FA-обычный вход).
 
 ## Фаза 3
 

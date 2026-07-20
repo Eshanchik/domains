@@ -1,0 +1,33 @@
+{
+  "title": "DomainGuard",
+  "uid": "domainguard",
+  "schemaVersion": 39,
+  "editable": true,
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Domains",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "dg_domains_total"}]
+    },
+    {
+      "type": "stat",
+      "title": "Active alerts",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "dg_active_alerts_total"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Circuit breaker open (by service)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{"expr": "dg_circuit_breaker_open", "legendFormat": "{{service}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "External failures (circuit breaker, by service)",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "targets": [{"expr": "dg_circuit_breaker_failures", "legendFormat": "{{service}}"}]
+    }
+  ]
+}

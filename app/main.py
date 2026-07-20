@@ -26,6 +26,7 @@ from app.web import import_web, settings_web
 from app.web import payments as web_payments
 from app.web import registrars as web_registrars
 from app.web import tokens as web_tokens
+from app.web import twofa as web_twofa
 from app.web import users as web_users
 from app.web import webhooks as web_webhooks
 
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(web_registrars.router)
     app.include_router(web_tokens.router)
     app.include_router(web_webhooks.router)
+    app.include_router(web_twofa.router)
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

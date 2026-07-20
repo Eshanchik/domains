@@ -24,6 +24,8 @@ class AuthError(enum.StrEnum):
     invalid = "invalid"
     locked = "locked"
     inactive = "inactive"
+    totp_required = "totp_required"
+    totp_invalid = "totp_invalid"
 
 
 @dataclass
@@ -55,11 +57,13 @@ async def authenticate(
     redis: aioredis.Redis,
     login: str,
     password: str,
+    code: str | None = None,
 ) -> AuthResult:
     """Verify credentials with brute-force protection.
 
     Returns a locked/invalid/inactive error rather than raising so the caller can
-    render a generic message (never reveal which factor failed).
+    render a generic message (never reveal which factor failed). If the user has 2FA
+    enabled, a valid TOTP ``code`` is also required.
     """
     if await login_guard.is_locked(redis, login):
         return AuthResult(error=AuthError.locked)
@@ -83,6 +87,16 @@ async def authenticate(
 
     if not user.is_active:
         return AuthResult(error=AuthError.inactive)
+
+    # Second factor (TOTP), if enabled for this user.
+    if user.totp_enabled:
+        from app.services import twofa
+
+        if not code:
+            return AuthResult(error=AuthError.totp_required)  # step 1: prompt for code
+        if not twofa.verify(twofa.user_secret(user) or "", code):
+            await login_guard.record_failure(redis, login)  # deter code brute-force
+            return AuthResult(error=AuthError.totp_invalid)
 
     # Successful login: clear counter and opportunistically upgrade the hash.
     await login_guard.reset(redis, login)

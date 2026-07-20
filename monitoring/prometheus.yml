@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: domainguard
+    metrics_path: /metrics
+    static_configs:
+      # The app is reachable inside the compose network as api:8000.
+      - targets: ["api:8000"]

@@ -22,6 +22,8 @@ _ERROR_MESSAGES = {
     AuthError.invalid: "Неверный логин или пароль.",
     AuthError.locked: "Слишком много неудачных попыток. Попробуйте позже.",
     AuthError.inactive: "Учётная запись отключена.",
+    AuthError.totp_required: "Введите код из приложения-аутентификатора.",
+    AuthError.totp_invalid: "Неверный код 2FA.",
 }
 
 
@@ -37,7 +39,7 @@ async def login_form(
 ) -> HTMLResponse:
     if user is not None:
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+    return templates.TemplateResponse(request, "login.html", {"error": None, "need_code": False})
 
 
 @router.post("/login")
@@ -45,14 +47,20 @@ async def login_submit(
     request: Request,
     login: str = Form(...),
     password: str = Form(...),
+    code: str = Form(""),
     session: AsyncSession = Depends(get_session),
     redis: aioredis.Redis = Depends(redis_dep),
 ):
-    result = await auth_service.authenticate(session, redis, login, password)
+    result = await auth_service.authenticate(session, redis, login, password, code=code or None)
     if not result.ok:
+        # 2FA required/invalid → keep the form up with the code field shown.
+        need_code = result.error in (AuthError.totp_required, AuthError.totp_invalid)
         message = _ERROR_MESSAGES.get(result.error, "Ошибка входа.")
         response = templates.TemplateResponse(
-            request, "login.html", {"error": message}, status_code=status.HTTP_401_UNAUTHORIZED
+            request,
+            "login.html",
+            {"error": message, "need_code": need_code, "login_value": login},
+            status_code=status.HTTP_401_UNAUTHORIZED,
         )
         return response
 

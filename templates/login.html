@@ -11,7 +11,7 @@
   <form method="post" action="/login" class="space-y-3">
     <div>
       <label class="block text-sm text-gray-600" for="login">Логин</label>
-      <input id="login" name="login" required autofocus
+      <input id="login" name="login" required value="{{ login_value or '' }}"
              class="mt-1 w-full rounded border px-3 py-2" />
     </div>
     <div>
@@ -19,6 +19,13 @@
       <input id="password" name="password" type="password" required
              class="mt-1 w-full rounded border px-3 py-2" />
     </div>
+    {% if need_code %}
+    <div>
+      <label class="block text-sm text-gray-600" for="code">Код 2FA</label>
+      <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" autofocus
+             class="mt-1 w-full rounded border px-3 py-2 font-mono" />
+    </div>
+    {% endif %}
     <button type="submit"
             class="w-full rounded bg-gray-900 px-3 py-2 text-white hover:bg-gray-700">
       Войти
