@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.locks import redis_lock
 from app.models.check import CheckSchedule, CheckType
 from app.models.domain import Domain
+from app.models.healthcheck import HealthCheck
 
 # Base interval per check type (SPEC §3.5).
 INTERVALS: dict[CheckType, timedelta] = {
@@ -36,6 +37,12 @@ def _default_send(domain_id: int, check_type: str) -> None:
     from app.workers.checks import run_check
 
     run_check.send(domain_id, check_type)
+
+
+def _default_send_healthcheck(healthcheck_id: int) -> None:
+    from app.workers.checks import run_healthcheck
+
+    run_healthcheck.send(healthcheck_id)
 
 
 def _next_at(now: datetime, ctype: CheckType, jitter_frac: float) -> datetime:
@@ -73,6 +80,43 @@ async def enqueue_due(
             send(sched.domain_id, sched.type.value)
             sched.next_check_at = _next_at(ts, sched.type, jitter_frac)
             dispatched.append((sched.domain_id, sched.type.value))
+    await session.commit()
+    return dispatched
+
+
+async def enqueue_due_healthchecks(
+    session: AsyncSession,
+    redis: aioredis.Redis,
+    *,
+    now: datetime | None = None,
+    batch_size: int = 500,
+    lock_ttl: int = 120,
+    send: Callable[[int], None] = _default_send_healthcheck,
+) -> list[int]:
+    """Dispatch enabled health-checks whose next_check_at is due. Returns their ids.
+
+    Each health-check advances its own ``next_check_at`` inside ``run_healthcheck``;
+    here we bump it forward provisionally so an immediate re-poll won't re-enqueue.
+    """
+    ts = now or datetime.now(UTC)
+    result = await session.execute(
+        select(HealthCheck)
+        .where(HealthCheck.is_enabled.is_(True), HealthCheck.next_check_at <= ts)
+        .order_by(HealthCheck.next_check_at)
+        .limit(batch_size)
+    )
+    due = list(result.scalars().all())
+
+    dispatched: list[int] = []
+    for hc in due:
+        lock_key = f"lock:healthcheck:{hc.id}"
+        async with redis_lock(redis, lock_key, ttl=lock_ttl) as got:
+            if not got:
+                continue
+            send(hc.id)
+            # Provisional bump; the worker sets the authoritative next_check_at.
+            hc.next_check_at = ts + timedelta(minutes=hc.interval_min)
+            dispatched.append(hc.id)
     await session.commit()
     return dispatched
 

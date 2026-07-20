@@ -156,7 +156,7 @@
   per-min budget=4). Проверено в Docker: сохранение VT-ключа → маска `MYSE***`,
   в БД зашифровано (без утечки plaintext). Реальный вызов VT — на деплое (ключ).
 
-- [ ] **T10. Health-checks (кастомные URL).**
+- [x] **T10. Health-checks (кастомные URL).** _(2026-07-20)_
   Модель HealthCheck/HealthCheckResult; CRUD в карточке домена; шаблонное
   массовое добавление к выборке (`{fqdn}` в URL); воркер: запрос без/с
   редиректами, проверка статуса + Location-паттерна + body-подстроки;
@@ -164,6 +164,16 @@
   восстановление → recovered. Тесты: сценарий редиректа
   `/click?pid=1&offer_id=625` → 302 + Location-паттерн; флаппинг не алертит
   до порога; recovered гасит событие.
+  _Сделано:_ модели HealthCheck (свой next_check_at/state/consecutive_failures) и
+  HealthCheckResult (+миграция); `checks/healthcheck` (status_matches "301,302"/
+  "200-299", pattern_matches regex→substring, _perform GET/HEAD с/без редиректов +
+  Location + body-substring, state-машина up/down/unknown с порогом, транзишены
+  down/recovered); `services/healthchecks` (CRUD + bulk-шаблон с `{fqdn}`);
+  scheduler `enqueue_due_healthchecks` + актор `run_healthcheck`; UI в карточке
+  (список+статус+добавить+удалить) и страница массового добавления. Тесты: 107
+  (matching unit; redirect→up, флаппинг<порога не down, порог→down→recovered,
+  bulk-шаблон подставляет fqdn). Проверено в Docker на реальном
+  www.forgeofreason.com/click → 302, state=up.
 
 - [ ] **T11. Каналы уведомлений: Telegram + маршрутизация.**
   Плагинный интерфейс канала; Telegram-канал (общий бот из Setting,

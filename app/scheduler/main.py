@@ -10,7 +10,7 @@ import logging
 
 from app.db import SessionLocal, get_redis
 from app.log import configure_logging
-from app.scheduler.service import backfill_schedules, enqueue_due
+from app.scheduler.service import backfill_schedules, enqueue_due, enqueue_due_healthchecks
 
 log = logging.getLogger("scheduler")
 
@@ -31,8 +31,11 @@ async def _run() -> None:
                         if created:
                             log.info("backfilled %d schedules", created)
                     dispatched = await enqueue_due(session, redis)
+                    hc_dispatched = await enqueue_due_healthchecks(session, redis)
                 if dispatched:
                     log.info("enqueued %d checks", len(dispatched))
+                if hc_dispatched:
+                    log.info("enqueued %d health-checks", len(hc_dispatched))
             except Exception:  # noqa: BLE001 — never let the loop die
                 log.exception("scheduler tick failed")
             tick += 1

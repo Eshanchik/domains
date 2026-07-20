@@ -211,8 +211,13 @@ async def domain_card(
     if domain is None or not await _visible(session, user, domain):
         return RedirectResponse("/domains", status_code=status.HTTP_303_SEE_OTHER)
     project = await companies_svc.get_project(session, domain.project_id)
+    from app.services import healthchecks as hc_svc
+
+    healthchecks = await hc_svc.list_for_domain(session, domain_id)
     return templates.TemplateResponse(
-        request, "domains/card.html", {"user": user, "domain": domain, "project": project}
+        request,
+        "domains/card.html",
+        {"user": user, "domain": domain, "project": project, "healthchecks": healthchecks},
     )
 
 

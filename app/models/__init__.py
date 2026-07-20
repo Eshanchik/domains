@@ -10,6 +10,7 @@ from app.models.check import CheckSchedule, CheckType
 from app.models.check_result import CheckResult, CheckStatus
 from app.models.company import Company, Project, Tag
 from app.models.domain import Domain, DomainFieldHistory, DomainTag
+from app.models.healthcheck import HealthCheck, HealthCheckResult
 from app.models.setting import Setting
 from app.models.ssl_certificate import SslCertificate
 from app.models.user import Role, User, UserScope
@@ -34,4 +35,6 @@ __all__ = [
     "SslCertificate",
     "Setting",
     "VtResult",
+    "HealthCheck",
+    "HealthCheckResult",
 ]
