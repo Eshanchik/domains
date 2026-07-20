@@ -210,10 +210,18 @@
   resolve, health down→recovered, dispatch instant). Проверено в Docker:
   near-expiry → high expiry-событие (days=4), видно на /alerts.
 
-- [ ] **T13. Daily digest.**
+- [x] **T13. Daily digest.** _(2026-07-20)_
   Сборка сводки по каналу (истекающие домены/SSL, активные VT, health down),
   отправка по digest_time (Europe/Kyiv); идемпотентность за день.
   Тесты: состав сводки по скоупу канала, повторный запуск не дублирует.
+  _Сделано:_ `services/digest` (scoped_domain_ids project/company/global,
+  compose_digest группирует активные AlertEvents по kind в RU-сводку, None если
+  пусто, run_digests шлёт каналам с mode digest/both и digest_time==текущей минуте
+  Kyiv, идемпотентность через Redis SET NX per (channel,day)); интеграция в
+  scheduler-цикл (Europe/Kyiv через zoneinfo, dep tzdata). Без новых моделей/
+  миграций. Тесты: 124 (сводка по скоупу проекта, пустая→None, идемпотентность за
+  день, только в свою минуту). Проверено в Docker: scheduler стартует (tzdata),
+  сводка «Истекают домены (1): everness.online (25 дн.)».
 
 - [ ] **T14. Дашборд.**
   Обзорная страница (счётчики из SPEC FR-UI-1 с разбивкой по компаниям/проектам);
