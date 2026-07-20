@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -281,6 +282,85 @@ async def list_domains(
     stmt = stmt.limit(flt.page_size).offset((page - 1) * flt.page_size)
     items = list((await session.execute(stmt)).scalars().all())
     return items, total
+
+
+async def ssl_status_map(
+    session: AsyncSession, domain_ids: list[int], *, now: datetime | None = None
+) -> dict[int, tuple[str, str]]:
+    """Latest SSL status per domain → ``{domain_id: (label, badge_tone)}``.
+
+    Labels (Russian) / tones: «проблема»/red on error, «истёк»/red once expired,
+    «скоро»/amber within 14 days, «ok»/green otherwise. Domains with no observation
+    yet are omitted from the map (the list view shows «—»). One query, no N+1.
+    """
+    if not domain_ids:
+        return {}
+    from app.models.ssl_certificate import SslCertificate
+
+    ts = now or datetime.now(UTC)
+    rows = (
+        (
+            await session.execute(
+                # DISTINCT ON (domain_id) ordered by newest → one latest row per domain.
+                select(SslCertificate)
+                .where(SslCertificate.domain_id.in_(domain_ids))
+                .order_by(SslCertificate.domain_id, SslCertificate.checked_at.desc())
+                .distinct(SslCertificate.domain_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out: dict[int, tuple[str, str]] = {}
+    for cert in rows:
+        if cert.error:
+            out[cert.domain_id] = ("проблема", "red")
+        elif cert.valid_to is None:
+            out[cert.domain_id] = ("—", "gray")
+        elif cert.valid_to <= ts:
+            out[cert.domain_id] = ("истёк", "red")
+        elif cert.valid_to <= ts + timedelta(days=14):
+            out[cert.domain_id] = ("скоро", "amber")
+        else:
+            out[cert.domain_id] = ("ok", "green")
+    return out
+
+
+def _default_check_sender(domain_id: int, check_type: str) -> None:
+    from app.workers.checks import run_check
+
+    run_check.send(domain_id, check_type)
+
+
+async def request_immediate_checks(
+    session: AsyncSession,
+    domain: Domain,
+    *,
+    actor_id: int,
+    send: Callable[[int, str], None] | None = None,
+) -> list[str]:
+    """Enqueue every default check (rdap/ssl/vt/dns) for one domain right now.
+
+    Returns the dispatched check types. ``send`` is injectable so tests don't touch
+    the broker (it defaults to the module-level sender, resolved at call time).
+    Records an audit entry; the caller's transaction is committed here.
+    """
+    from app.scheduler.service import DEFAULT_TYPES
+
+    sender = send or _default_check_sender
+    types = [t.value for t in DEFAULT_TYPES]
+    for check_type in types:
+        sender(domain.id, check_type)
+    await record_audit(
+        session,
+        actor_id=actor_id,
+        action="check_now",
+        entity_type="domain",
+        entity_id=domain.id,
+        diff={"types": types},
+    )
+    await session.commit()
+    return types
 
 
 async def bulk_assign_project(

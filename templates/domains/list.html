@@ -34,7 +34,7 @@
 </div>
 
 <form method="post" action="/domains/bulk">
-<div class="card overflow-x-auto">
+<div class="card">
   <table class="dg-table">
     <thead>
       <tr>
@@ -42,8 +42,10 @@
         <th><a class="hover:text-slate-700 dark:hover:text-slate-200" href="?sort=fqdn&dir={{ 'desc' if f.sort=='fqdn' and f.dir=='asc' else 'asc' }}">Домен</a></th>
         <th>Проект</th>
         <th><a class="hover:text-slate-700 dark:hover:text-slate-200" href="?sort=expiry_date&dir={{ 'desc' if f.sort=='expiry_date' and f.dir=='asc' else 'asc' }}">Истекает</a></th>
-        <th>Теги</th>
+        <th>SSL</th>
+        <th>Auto-renew</th>
         <th>Активен</th>
+        <th class="w-10"></th>
       </tr>
     </thead>
     <tbody>
@@ -51,13 +53,35 @@
       <tr>
         <td><input type="checkbox" name="ids" value="{{ d.id }}" class="checkbox" /></td>
         <td><a href="/domains/{{ d.id }}" class="link font-mono">{{ d.fqdn }}</a></td>
-        <td class="muted">{{ d.project_id }}</td>
+        <td>{{ project_names.get(d.project_id, d.project_id) }}</td>
         <td>{{ d.expiry_date.strftime('%Y-%m-%d') if d.expiry_date else '—' }}</td>
-        <td>{% for t in d.tags %}{{ ui.badge(t.name, "gray") }} {% endfor %}</td>
+        <td>
+          {%- set s = ssl.get(d.id) -%}
+          {% if s %}{{ ui.badge(s[0], s[1]) }}{% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>{{ {none:'неизвестно', true:'да', false:'нет'}[d.auto_renew] }}</td>
         <td>{% if d.is_active %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</td>
+        <td class="text-right">
+          <details class="relative inline-block text-left">
+            <summary class="btn btn-ghost btn-sm cursor-pointer list-none [&::-webkit-details-marker]:hidden" aria-label="Действия">⋮</summary>
+            <div class="absolute right-0 z-20 mt-1 w-48 rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-lg dark:border-slate-700 dark:bg-slate-800">
+              <a href="/domains/{{ d.id }}" class="block px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700">Открыть</a>
+              {% if user.role.value in ("admin", "manager") %}
+              <a href="/domains/{{ d.id }}/edit" class="block px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700">Изменить</a>
+              <button type="button" class="block w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                      hx-post="/domains/{{ d.id }}/check" hx-swap="none"
+                      hx-on::after-request="this.textContent='Поставлено в очередь ✓'; this.disabled=true">Проверить сейчас</button>
+              <button type="button" class="block w-full px-3 py-1.5 text-left hover:bg-slate-100 dark:hover:bg-slate-700"
+                      hx-post="/domains/{{ d.id }}/archive"
+                      hx-vals='{"archived": "{{ "true" if d.is_active else "false" }}"}'
+                      hx-target="body" hx-swap="outerHTML">{{ "В архив" if d.is_active else "Из архива" }}</button>
+              {% endif %}
+            </div>
+          </details>
+        </td>
       </tr>
       {% else %}
-      {{ ui.empty_row(6, "Домены не найдены.") }}
+      {{ ui.empty_row(8, "Домены не найдены.") }}
       {% endfor %}
     </tbody>
   </table>
