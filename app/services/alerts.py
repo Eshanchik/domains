@@ -238,7 +238,9 @@ def build_message(event: AlertEvent, domain: Domain) -> str:
     if event.kind == "health_down":
         return f"🔴 Health-check {fqdn} недоступен (check #{p.get('healthcheck_id')})."
     if event.kind == "ns_change":
-        return f"🛡️ Сменились NS домена {fqdn}: {', '.join(p.get('new_ns') or [])} (было: {', '.join(p.get('old_ns') or [])})."
+        new_ns = ", ".join(p.get("new_ns") or [])
+        old_ns = ", ".join(p.get("old_ns") or [])
+        return f"🛡️ Сменились NS домена {fqdn}: {new_ns} (было: {old_ns})."
     return f"Событие по домену {fqdn}: {event.kind}"
 
 
