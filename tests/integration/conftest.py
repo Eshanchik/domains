@@ -45,8 +45,8 @@ def _clean_state():
                 text(
                     "TRUNCATE users, user_scopes, audit_log, companies, projects, tags, "
                     "domains, domain_tags, domain_field_history, check_schedule, "
-                    "check_result, ssl_certificates, vt_results, settings "
-                    "RESTART IDENTITY CASCADE"
+                    "check_result, ssl_certificates, vt_results, settings, "
+                    "health_checks, health_check_results RESTART IDENTITY CASCADE"
                 )
             )
         redis = get_redis()

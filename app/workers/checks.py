@@ -46,3 +46,27 @@ async def _run(check_type: str, domain_id: int) -> None:
 def run_check(domain_id: int, check_type: str) -> None:
     """Entry point enqueued by the scheduler for a due (domain, check_type)."""
     asyncio.run(_run(check_type, domain_id))
+
+
+async def _run_healthcheck(healthcheck_id: int) -> None:
+    redis = get_redis()
+    try:
+        async with SessionLocal() as session:
+            from app.checks.healthcheck import run_healthcheck as do_check
+
+            outcome = await do_check(session, redis, healthcheck_id)
+            log.info(
+                "healthcheck %s → state=%s ok=%s transition=%s",
+                healthcheck_id,
+                outcome.state,
+                outcome.ok,
+                outcome.transition,
+            )
+    finally:
+        await redis.aclose()
+
+
+@dramatiq.actor(max_retries=3, queue_name="checks")
+def run_healthcheck(healthcheck_id: int) -> None:
+    """Entry point enqueued by the scheduler for a due health-check."""
+    asyncio.run(_run_healthcheck(healthcheck_id))

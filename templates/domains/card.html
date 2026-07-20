@@ -28,12 +28,82 @@
   <div><dt class="text-gray-500">Цена продления</dt><dd>{{ domain.renewal_price ~ ' ' ~ domain.renewal_currency if domain.renewal_price else '—' }}</dd></div>
 </dl>
 
-{# Вкладки-каркас: наполняются по мере готовности модулей (T07+). #}
+{# Health-checks (кастомная доступность) #}
+<section class="mb-6">
+  <h2 class="mb-2 text-sm font-medium text-gray-600">Health-checks</h2>
+  {% if healthchecks %}
+  <table class="mb-3 w-full border-collapse text-sm">
+    <thead>
+      <tr class="border-b text-left text-gray-500">
+        <th class="py-1">URL</th><th class="py-1">Метод</th><th class="py-1">Ожид.</th>
+        <th class="py-1">Состояние</th><th class="py-1">Последняя</th>
+        {% if user.role.value in ("admin","manager") %}<th class="py-1"></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for hc in healthchecks %}
+      <tr class="border-b">
+        <td class="py-1 font-mono text-xs">{{ hc.url }}</td>
+        <td class="py-1">{{ hc.method }}</td>
+        <td class="py-1">{{ hc.expected_statuses }}</td>
+        <td class="py-1">
+          <span class="{{ 'text-green-700' if hc.state=='up' else ('text-red-700' if hc.state=='down' else 'text-gray-400') }}">
+            {{ hc.state }}{% if hc.consecutive_failures %} ({{ hc.consecutive_failures }}){% endif %}
+          </span>
+        </td>
+        <td class="py-1">{{ hc.last_checked_at.strftime('%Y-%m-%d %H:%M') if hc.last_checked_at else '—' }}</td>
+        {% if user.role.value in ("admin","manager") %}
+        <td class="py-1">
+          <form method="post" action="/healthchecks/{{ hc.id }}/delete" class="inline"
+                onsubmit="return confirm('Удалить health-check?');">
+            <button type="submit" class="text-red-600 hover:underline">Удалить</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="mb-3 text-sm text-gray-500">Health-check'ов нет (домен по доступности не проверяется).</p>
+  {% endif %}
+
+  {% if user.role.value in ("admin","manager") %}
+  <details class="rounded border p-3 text-sm">
+    <summary class="cursor-pointer text-gray-700">Добавить health-check</summary>
+    <form method="post" action="/domains/{{ domain.id }}/healthchecks" class="mt-3 grid grid-cols-2 gap-2">
+      <label class="col-span-2">URL
+        <input name="url" required placeholder="https://{{ domain.fqdn }}/click?pid=1" class="mt-1 w-full rounded border px-2 py-1 font-mono" />
+      </label>
+      <label>Метод
+        <select name="method" class="mt-1 w-full rounded border px-2 py-1"><option>GET</option><option>HEAD</option></select>
+      </label>
+      <label>Ожид. статусы
+        <input name="expected_statuses" value="200-299" class="mt-1 w-full rounded border px-2 py-1" />
+      </label>
+      <label class="flex items-center gap-2"><input type="checkbox" name="follow_redirects" /> следовать редиректам</label>
+      <label>Location-паттерн
+        <input name="location_pattern" placeholder="(regex/подстрока)" class="mt-1 w-full rounded border px-2 py-1" />
+      </label>
+      <label>Подстрока в теле
+        <input name="body_substring" class="mt-1 w-full rounded border px-2 py-1" />
+      </label>
+      <label>Порог неудач
+        <input name="fail_threshold" type="number" value="3" class="mt-1 w-full rounded border px-2 py-1" />
+      </label>
+      <div class="col-span-2">
+        <button type="submit" class="rounded bg-gray-900 px-3 py-1 text-white hover:bg-gray-700">Добавить</button>
+      </div>
+    </form>
+  </details>
+  {% endif %}
+</section>
+
+{# Вкладки-каркас: наполняются по мере готовности модулей. #}
 <div class="border-b text-sm">
   <nav class="flex gap-4">
     <span class="border-b-2 border-gray-900 pb-2 font-medium">Изменения</span>
     <span class="pb-2 text-gray-400">Проверки</span>
-    <span class="pb-2 text-gray-400">Health-checks</span>
     <span class="pb-2 text-gray-400">Платежи</span>
     <span class="pb-2 text-gray-400">Алерты</span>
   </nav>
