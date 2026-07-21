@@ -65,6 +65,25 @@ def test_alert_detail_renders_fields_and_payload(
     assert f"/alerts/{eid}" in lst.text
 
 
+def test_alert_list_shows_project_and_age(
+    client, make_user, make_company, make_project, make_domain
+) -> None:
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="ag.com")
+    _make_event(dom, kind="ssl", severity="high")
+    make_user(login="root", password="password123", role=Role.admin)
+    _login(client, "root", "password123")
+
+    page = client.get("/alerts")
+    assert page.status_code == 200
+    assert "ag.com" in page.text
+    assert "PROJECT" in page.text  # new column header
+    assert "web" in page.text  # project name
+    assert "ACME" in page.text  # company name
+    assert "◆ ACTIVE" in page.text  # state + age column
+
+
 def test_alert_detail_out_of_scope_redirects(
     client, make_user, make_company, make_project, make_domain
 ) -> None:

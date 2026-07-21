@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
@@ -11,6 +13,7 @@ from app.db import get_session
 from app.deps import require_role, require_user
 from app.models.alert import AlertEvent
 from app.models.check_result import CheckResult
+from app.models.company import Company, Project
 from app.models.domain import Domain
 from app.models.user import Role, User
 from app.services import alerts as alerts_svc
@@ -21,6 +24,19 @@ router = APIRouter(tags=["web-alerts"])
 manager_required = require_role(Role.manager)
 
 
+def format_age(delta: timedelta) -> str:
+    """Compact age string for how long an alert has been active: «3д 4ч» / «5ч 12м» / «8м»."""
+    total = max(0, int(delta.total_seconds()))
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    if days:
+        return f"{days}д {hours}ч"
+    if hours:
+        return f"{hours}ч {minutes}м"
+    return f"{minutes}м"
+
+
 @router.get("/alerts", response_class=HTMLResponse)
 async def alerts_list(
     request: Request,
@@ -29,8 +45,10 @@ async def alerts_list(
 ) -> HTMLResponse:
     allowed = await domains_svc.allowed_project_ids(session, user)
     stmt = (
-        select(AlertEvent, Domain.fqdn)
+        select(AlertEvent, Domain.fqdn, Project.name, Company.name)
         .join(Domain, Domain.id == AlertEvent.domain_id)
+        .join(Project, Project.id == Domain.project_id)
+        .join(Company, Company.id == Project.company_id)
         .where(AlertEvent.state == "active")
         .order_by(AlertEvent.fired_at.desc())
     )
@@ -40,7 +58,18 @@ async def alerts_list(
             if allowed
             else stmt.where(Domain.id.is_(None))
         )
-    rows = (await session.execute(stmt)).all()
+    raw = (await session.execute(stmt)).all()
+    now = datetime.now(UTC)
+    rows = [
+        {
+            "event": event,
+            "fqdn": fqdn,
+            "project": project,
+            "company": company,
+            "age": format_age(now - event.fired_at),
+        }
+        for event, fqdn, project, company in raw
+    ]
     return templates.TemplateResponse(request, "alerts/list.html", {"user": user, "rows": rows})
 
 

@@ -10,15 +10,31 @@
 </div>
 
 <div style="background:var(--panel);padding:6px 0">
-  {% for event, fqdn in rows %}
+  {# column header #}
+  {% if rows %}
+  <div style="display:flex;align-items:center;gap:12px;padding:2px 16px 6px;font-size:11px;letter-spacing:.08em;color:var(--faint);text-transform:uppercase">
+    <span style="width:78px;flex-shrink:0">SEV</span>
+    <span style="width:88px;flex-shrink:0">KIND</span>
+    <span style="flex:1.4;min-width:0">DOMAIN</span>
+    <span style="flex:1;min-width:0">PROJECT</span>
+    <span style="width:132px;flex-shrink:0">FIRED</span>
+    <span style="width:150px;text-align:right;flex-shrink:0">STATE / AGE</span>
+    <span style="width:10px"></span>
+  </div>
+  {% endif %}
+  {% for row in rows %}
+  {%- set event = row.event -%}
   <a href="/alerts/{{ event.id }}" onclick="location='/alerts/{{ event.id }}'"
      class="dg-logrow"
      style="display:flex;align-items:center;gap:12px;padding:6px 16px;cursor:pointer;text-decoration:none;{{ 'background:var(--panel-2)' if loop.index0 % 2 else 'background:transparent' }}">
     <span style="width:78px;flex-shrink:0;color:{{ sev_color.get(event.severity, 'var(--dim)') }}">{{ sev_glyph.get(event.severity, event.severity) }}</span>
-    <span style="width:96px;flex-shrink:0;color:var(--dim)">{{ event.kind }}</span>
-    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--acc)">{{ fqdn }}</span>
-    <span style="flex-shrink:0;color:var(--dim)">{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</span>
-    <span style="width:100px;text-align:right;flex-shrink:0;color:var(--amber)">◆ ACTIVE</span>
+    <span style="width:88px;flex-shrink:0;color:var(--dim)">{{ event.kind }}</span>
+    <span style="flex:1.4;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--acc)">{{ row.fqdn }}</span>
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ row.company }} / {{ row.project }}">
+      <span style="color:var(--cyan)">{{ row.project }}</span><span style="color:var(--faint)"> · {{ row.company }}</span>
+    </span>
+    <span style="width:132px;flex-shrink:0;color:var(--dim)">{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</span>
+    <span style="width:150px;text-align:right;flex-shrink:0"><span style="color:var(--amber)">◆ ACTIVE</span> <span style="color:var(--dim)">· {{ row.age }}</span></span>
     <span style="margin-left:8px;color:var(--dim)">›</span>
   </a>
   {% else %}
