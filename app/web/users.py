@@ -45,9 +45,7 @@ async def list_users(
     admin: User = Depends(admin_required),
 ) -> HTMLResponse:
     users = await auth_service.list_users(session)
-    return templates.TemplateResponse(
-        request, "users/list.html", {"user": admin, "users": users}
-    )
+    return templates.TemplateResponse(request, "users/list.html", {"user": admin, "users": users})
 
 
 @router.get("/new", response_class=HTMLResponse)
