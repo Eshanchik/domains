@@ -309,3 +309,30 @@ def test_filter_empty_project_shows_empty_state(
     assert page2.status_code == 200
     assert "has-domain.com" in page2.text
     assert "Домены не найдены." not in page2.text
+
+
+# --- T31: filter query tolerates empty int params (auto-submit) ---------------
+
+
+def test_filter_empty_int_params_do_not_500(
+    client, make_user, make_company, make_project, make_domain
+) -> None:
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    make_domain(proj, fqdn="has-domain.com")
+    _admin(client, make_user)
+
+    # Auto-submitted filter form sends blank project_id/expiring/tag — must not 422.
+    page = client.get(f"/domains?q=&company_id={acme}&project_id=&tag=&expiring=")
+    assert page.status_code == 200
+    assert "has-domain.com" in page.text
+
+    # Blank company too (selecting «Все компании»).
+    allc = client.get("/domains?q=&company_id=&project_id=&tag=&expiring=")
+    assert allc.status_code == 200
+    assert "has-domain.com" in allc.text
+
+    # CSV export with blank params also works.
+    csv_resp = client.get("/domains/export.csv?company_id=&project_id=&expiring=")
+    assert csv_resp.status_code == 200
+    assert "has-domain.com" in csv_resp.text
