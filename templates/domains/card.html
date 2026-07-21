@@ -16,7 +16,11 @@
       <span style="color:var(--dim)">project:</span><span>{{ project.name if project else domain.project_id }}</span>
       <span style="color:var(--dim)">tld:</span><span>{{ domain.tld }}</span>
       <span style="color:var(--dim)">punycode:</span><span class="font-mono">{{ domain.punycode }}</span>
-      <span style="color:var(--dim)">expires:</span><span>{{ domain.expiry_date.strftime('%Y-%m-%d') if domain.expiry_date else '—' }}</span>
+      {%- set rdap = recent_checks | selectattr('type', 'equalto', 'rdap') | first -%}
+      {%- set ssl = recent_checks | selectattr('type', 'equalto', 'ssl') | first -%}
+      <span style="color:var(--dim)">expires:</span><span>{% if domain.expiry_date %}{{ domain.expiry_date.strftime('%Y-%m-%d') }} <span style="color:var(--dim)">({{ (domain.expiry_date.date() - today).days }}d)</span>{% else %}—{% endif %}</span>
+      <span style="color:var(--dim)">rdap:</span><span>{% if rdap %}{{ ui.status_badge(rdap.status) }}{% else %}<span class="muted">—</span>{% endif %}</span>
+      <span style="color:var(--dim)">ssl:</span><span>{% if ssl %}{{ ui.status_badge(ssl.status) }}{% else %}<span class="muted">—</span>{% endif %}</span>
       <span style="color:var(--dim)">auto-renew:</span><span>{{ {none:'неизвестно', true:'да', false:'нет'}[domain.auto_renew] }}</span>
       <span style="color:var(--dim)">активен:</span><span>{% if domain.is_active %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</span>
       <span style="color:var(--dim)">nameservers:</span><span style="word-break:break-word">{{ domain.nameservers | join(', ') or '—' }}</span>

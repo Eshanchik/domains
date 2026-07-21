@@ -16,7 +16,7 @@
   <div style="padding:10px 16px;display:grid;grid-template-columns:120px 1fr;row-gap:6px;column-gap:12px">
     <span style="color:var(--dim)">Домен</span><a href="/domains/{{ domain.id }}" class="link font-mono" style="color:var(--acc)">{{ domain.fqdn }}</a>
     <span style="color:var(--dim)">Severity</span><span>{{ ui.status_badge(event.severity) }}</span>
-    <span style="color:var(--dim)">Состояние</span><span>{% if event.state == "active" %}{{ ui.badge("активен", "red") }}{% else %}{{ ui.badge("решён", "green") }}{% endif %}</span>
+    <span style="color:var(--dim)">Состояние</span><span>{% if event.state == "active" %}{{ ui.badge("ACTIVE", "amber") }}{% else %}{{ ui.badge("RESOLVED", "green") }}{% endif %}</span>
     <span style="color:var(--dim)">Сработал</span><span>{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</span>
     <span style="color:var(--dim)">Решён</span><span>{{ event.resolved_at.strftime('%Y-%m-%d %H:%M') if event.resolved_at else '—' }}</span>
     <span style="color:var(--dim)">Тип</span><span>{{ event.kind }}</span>

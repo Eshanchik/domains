@@ -20,17 +20,23 @@
       <button type="submit" class="btn btn-secondary btn-sm">Показать</button>
     </form>
   </div>
+  {%- set maxv = (summary | map(attribute='total_usd') | max) if summary else 0 -%}
   <table class="dg-table">
-    <thead><tr><th>Группа</th><th class="text-right">Сумма, USD</th></tr></thead>
+    <thead><tr><th>Группа</th><th>Доля</th><th class="text-right">Сумма, USD</th></tr></thead>
     <tbody>
       {% for row in summary %}
-      <tr><td>{{ row.label }}</td><td class="text-right">{{ '%.2f'|format(row.total_usd) }}</td></tr>
+      {%- set filled = (row.total_usd / maxv * 10) | round(0, 'floor') | int if maxv else 0 -%}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td style="color:var(--acc);letter-spacing:.05em">{{ '▓' * filled }}{{ '░' * (10 - filled) }} <span style="color:var(--dim)">{{ (row.total_usd / total * 100) | round | int if total else 0 }}%</span></td>
+        <td class="text-right">{{ '%.2f'|format(row.total_usd) }}</td>
+      </tr>
       {% else %}
-      {{ ui.empty_row(2, "Нет платежей за период.") }}
+      {{ ui.empty_row(3, "Нет платежей за период.") }}
       {% endfor %}
     </tbody>
     {% if summary %}
-    <tfoot><tr class="font-medium"><td>Итого</td><td class="text-right">{{ '%.2f'|format(total) }}</td></tr></tfoot>
+    <tfoot><tr class="font-medium"><td>Итого</td><td></td><td class="text-right">{{ '%.2f'|format(total) }}</td></tr></tfoot>
     {% endif %}
   </table>
 {% endcall %}

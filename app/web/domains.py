@@ -6,6 +6,7 @@ project must be within the user's scope. CSV export mirrors the current filter.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Query, Request, status
@@ -161,6 +162,7 @@ async def domains_list(
             "total": total,
             "page": flt.page,
             "pages": pages,
+            "page_size": flt.page_size,
             "filter_qs": filter_qs,
             "companies": companies,
             "projects": projects,
@@ -337,6 +339,7 @@ async def domain_card(
             "recent_checks": recent_checks,
             "alerts": alerts,
             "payments": payments,
+            "today": datetime.now(UTC).date(),
         },
     )
 
@@ -372,8 +375,6 @@ async def domain_update(
     domain = await svc.get_domain(session, domain_id)
     if domain is None or not await _visible(session, user, domain):
         return _forbidden()
-    from datetime import datetime
-
     data = DomainUpdate(
         notes=notes or None,
         expiry_date=datetime.fromisoformat(expiry_date) if expiry_date.strip() else None,

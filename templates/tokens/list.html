@@ -7,7 +7,7 @@
 {% if new_token %}
 <div class="flash flash-success">
   <p class="mb-1">Токен создан. Скопируйте его — он показывается только один раз:</p>
-  <code class="block break-all rounded bg-white/70 px-2 py-1 font-mono text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">{{ new_token }}</code>
+  <code class="block break-all bg-white/70 px-2 py-1 font-mono text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">{{ new_token }}</code>
   <p class="mt-1 text-xs muted">Использование: <code>Authorization: Bearer {{ new_token }}</code></p>
 </div>
 {% endif %}

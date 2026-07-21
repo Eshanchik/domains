@@ -25,6 +25,8 @@ class CompanyRow:
     name: str
     domains: int
     expiring_30: int
+    ssl_problems: int = 0
+    cost_usd: float = 0.0
 
 
 @dataclass
@@ -127,7 +129,48 @@ async def _company_breakdown(session, scoped, active, cutoff_30) -> list[Company
             )
         ).all()
     )
+    # SSL-fail count per company (domains with an active ssl alert).
+    ssl_rows = dict(
+        (
+            await session.execute(
+                scoped(
+                    select(Company.name, func.count(func.distinct(Domain.id)))
+                    .select_from(Domain)
+                    .join(Project, Project.id == Domain.project_id)
+                    .join(Company, Company.id == Project.company_id)
+                    .join(AlertEvent, AlertEvent.domain_id == Domain.id)
+                    .where(active, AlertEvent.state == "active", AlertEvent.kind == "ssl")
+                    .group_by(Company.name)
+                )
+            )
+        ).all()
+    )
+    # Annual renewal cost per company (USD-priced domains only).
+    cost_rows = dict(
+        (
+            await session.execute(
+                scoped(
+                    select(Company.name, func.coalesce(func.sum(Domain.renewal_price), 0))
+                    .select_from(Domain)
+                    .join(Project, Project.id == Domain.project_id)
+                    .join(Company, Company.id == Project.company_id)
+                    .where(
+                        active,
+                        Domain.renewal_price.is_not(None),
+                        Domain.renewal_currency == "USD",
+                    )
+                    .group_by(Company.name)
+                )
+            )
+        ).all()
+    )
     return [
-        CompanyRow(name=name, domains=cnt, expiring_30=exp_rows.get(name, 0))
+        CompanyRow(
+            name=name,
+            domains=cnt,
+            expiring_30=exp_rows.get(name, 0),
+            ssl_problems=ssl_rows.get(name, 0),
+            cost_usd=float(cost_rows.get(name, 0) or 0),
+        )
         for name, cnt in total_rows
     ]
