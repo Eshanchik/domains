@@ -40,6 +40,11 @@
     <label for="is_active" class="label mb-0">Активен</label>
   </div>
   {% endif %}
+  <div class="flex items-center gap-2">
+    <input id="mcp_allowed" name="mcp_allowed" type="checkbox" class="checkbox" {{ "checked" if editing and subject.mcp_allowed else "" }} />
+    <label for="mcp_allowed" class="label mb-0">Разрешён MCP</label>
+    <span class="text-xs muted">(админам — всегда)</span>
+  </div>
   <div>
     <label class="label" for="scopes">
       Скоупы (по строке: <code>company:1</code> или <code>project:2</code>)

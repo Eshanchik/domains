@@ -12,6 +12,7 @@
         <th>Email</th>
         <th>Роль</th>
         <th>Активен</th>
+        <th>MCP</th>
         <th>Скоупы</th>
         <th></th>
       </tr>
@@ -24,6 +25,7 @@
         <td>{{ u.email }}</td>
         <td>{{ u.role.value }}</td>
         <td>{% if u.is_active %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</td>
+        <td>{% if u.role.value == "admin" or u.mcp_allowed %}{{ ui.badge("да", "green") }}{% else %}<span class="muted">—</span>{% endif %}</td>
         <td class="muted">
           {% for s in u.scopes %}
             {% if s.company_id %}company:{{ s.company_id }}{% endif %}

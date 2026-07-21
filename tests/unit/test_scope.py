@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.models.user import Role, User, UserScope
-from app.services.auth import user_in_scope
+from app.services.auth import user_in_scope, user_may_use_mcp
 
 
 def _user(role: Role, scopes: list[UserScope]) -> User:
@@ -15,6 +15,20 @@ def _user(role: Role, scopes: list[UserScope]) -> User:
 def test_admin_always_in_scope() -> None:
     u = _user(Role.admin, [])
     assert user_in_scope(u, company_id=1, project_id=99) is True
+
+
+def test_mcp_allowed_admin_always() -> None:
+    admin = _user(Role.admin, [])
+    admin.mcp_allowed = False
+    assert user_may_use_mcp(admin) is True  # admins bypass the flag
+
+
+def test_mcp_allowed_flag_gates_non_admin() -> None:
+    viewer = _user(Role.viewer, [])
+    viewer.mcp_allowed = False
+    assert user_may_use_mcp(viewer) is False
+    viewer.mcp_allowed = True
+    assert user_may_use_mcp(viewer) is True
 
 
 def test_non_admin_without_scopes_denied() -> None:

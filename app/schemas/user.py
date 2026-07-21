@@ -24,6 +24,7 @@ class UserCreate(BaseModel):
     login: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=8, max_length=128)
     role: Role = Role.viewer
+    mcp_allowed: bool = False
     scopes: list[ScopeIn] = Field(default_factory=list)
 
 
@@ -31,6 +32,7 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     role: Role | None = None
     is_active: bool | None = None
+    mcp_allowed: bool | None = None
     # When present, replaces the whole scope set for the user.
     scopes: list[ScopeIn] | None = None
 

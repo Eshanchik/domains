@@ -36,6 +36,9 @@ class User(Base):
         default=Role.viewer,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Whether this user may authorize MCP access (T45). Admins are always allowed
+    # regardless of this flag; for others an admin must opt them in.
+    mcp_allowed: Mapped[bool] = mapped_column(Boolean, default=False)
     # 2FA (TOTP): secret encrypted at rest; enabled only after a verified code.
     totp_secret_enc: Mapped[str | None] = mapped_column(String(255), nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

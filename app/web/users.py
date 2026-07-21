@@ -67,6 +67,7 @@ async def create_user(
     login: str = Form(...),
     password: str = Form(...),
     role: str = Form(Role.viewer.value),
+    mcp_allowed: str = Form("off"),
     scopes: str = Form(""),
     session: AsyncSession = Depends(get_session),
     admin: User = Depends(admin_required),
@@ -77,6 +78,7 @@ async def create_user(
             login=login,
             password=password,
             role=Role(role),
+            mcp_allowed=(mcp_allowed == "on"),
             scopes=_parse_scopes(scopes),
         )
     except (ValidationError, ValueError) as exc:
@@ -114,6 +116,7 @@ async def update_user(
     email: str = Form(...),
     role: str = Form(...),
     is_active: str = Form("off"),
+    mcp_allowed: str = Form("off"),
     scopes: str = Form(""),
     session: AsyncSession = Depends(get_session),
     admin: User = Depends(admin_required),
@@ -125,6 +128,7 @@ async def update_user(
         email=email,
         role=Role(role),
         is_active=(is_active == "on"),
+        mcp_allowed=(mcp_allowed == "on"),
         scopes=_parse_scopes(scopes),
     )
     await auth_service.update_user(session, user, data, actor_id=admin.id)
