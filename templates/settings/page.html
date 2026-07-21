@@ -2,10 +2,10 @@
 {% import "_components.html" as ui %}
 {% block title %}Настройки — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Настройки", subtitle="Секреты хранятся зашифрованными (Fernet). Показываются в маскированном виде; пустое поле оставляет текущее значение без изменений.") }}
-
-<div class="card card-p max-w-lg">
-<form method="post" action="/settings" class="space-y-4">
+<div class="max-w-lg">
+{% call ui.panel("Настройки") %}
+<form method="post" action="/settings" class="space-y-4" style="padding:16px 18px">
+  <p class="muted">Секреты хранятся зашифрованными (Fernet). Показываются в маскированном виде; пустое поле оставляет текущее значение без изменений.</p>
   <div>
     <label class="label" for="vt_api_key">
       VirusTotal API key {% if vt_masked %}<span class="muted">(сейчас: {{ vt_masked }})</span>{% endif %}
@@ -26,5 +26,6 @@
     <button type="submit" class="btn btn-primary">Сохранить</button>
   </div>
 </form>
+{% endcall %}
 </div>
 {% endblock %}

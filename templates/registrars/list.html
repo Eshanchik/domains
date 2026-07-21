@@ -2,11 +2,9 @@
 {% import "_components.html" as ui %}
 {% block title %}Регистраторы — DomainGuard{% endblock %}
 {% block content %}
-{% call ui.page_header("Аккаунты регистраторов") %}
-  <a href="/unassigned" class="btn btn-secondary btn-sm">Неразобранные ({{ unassigned_count }})</a>
-{% endcall %}
-
-<div class="card overflow-x-auto mb-6">
+{% call ui.panel("Аккаунты регистраторов",
+                 action_label="Неразобранные (" ~ unassigned_count ~ ")",
+                 action_href="/unassigned") %}
   <table class="dg-table">
     <thead>
       <tr>
@@ -17,7 +15,7 @@
     <tbody>
       {% for a in accounts %}
       <tr>
-        <td class="font-medium text-slate-800 dark:text-slate-100">{{ a.label }}</td>
+        <td style="color:var(--acc)">{{ a.label }}</td>
         <td>{{ types.get(a.registrar_id, '—') }}</td>
         <td class="font-mono">{{ ip_of(a) or '—' }}</td>
         <td>
@@ -37,13 +35,12 @@
       {% endfor %}
     </tbody>
   </table>
-</div>
+{% endcall %}
 
 <div class="grid gap-6 md:grid-cols-2">
-  <div>
-    <h2 class="section-title">Добавить аккаунт Namecheap</h2>
+  {% call ui.panel("Добавить аккаунт Namecheap") %}
+  <div style="padding:16px 18px">
     <p class="mb-3 text-xs muted">Ключи шифруются. Требуется whitelist IP сервера в Namecheap.</p>
-    <div class="card card-p">
     <form method="post" action="/registrars" class="grid grid-cols-2 gap-3 text-sm">
       <label><span class="label">Метка</span><input name="label" required class="input" /></label>
       <label><span class="label">ApiUser</span><input name="api_user" required class="input" /></label>
@@ -52,19 +49,18 @@
       <label><span class="label">Client IP (whitelisted)</span><input name="client_ip" required class="input input-mono" /></label>
       <div class="col-span-2"><button type="submit" class="btn btn-primary">Добавить Namecheap</button></div>
     </form>
-    </div>
   </div>
-  <div>
-    <h2 class="section-title">Добавить аккаунт GoDaddy</h2>
+  {% endcall %}
+  {% call ui.panel("Добавить аккаунт GoDaddy") %}
+  <div style="padding:16px 18px">
     <p class="mb-3 text-xs muted">Ключи шифруются. Production API-ключ (key/secret) из GoDaddy Developer.</p>
-    <div class="card card-p">
     <form method="post" action="/registrars/godaddy" class="grid grid-cols-2 gap-3 text-sm">
       <label><span class="label">Метка</span><input name="label" required class="input" /></label>
       <label><span class="label">API Key</span><input name="api_key" required class="input" /></label>
       <label class="col-span-2"><span class="label">API Secret</span><input name="api_secret" type="password" required class="input" /></label>
       <div class="col-span-2"><button type="submit" class="btn btn-primary">Добавить GoDaddy</button></div>
     </form>
-    </div>
   </div>
+  {% endcall %}
 </div>
 {% endblock %}

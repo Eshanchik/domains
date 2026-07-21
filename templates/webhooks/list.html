@@ -2,9 +2,7 @@
 {% import "_components.html" as ui %}
 {% block title %}Вебхуки — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Исходящие вебхуки", subtitle="На каждое событие алерта POST-запрос с JSON на указанные URL. Если задан секрет — подпись X-DomainGuard-Signature: sha256=… (HMAC тела).") }}
-
-<div class="card overflow-x-auto">
+{% call ui.panel("Вебхуки (" ~ (endpoints | length) ~ ")") %}
   <table class="dg-table">
     <thead>
       <tr>
@@ -29,11 +27,13 @@
       {% endfor %}
     </tbody>
   </table>
-</div>
+{% endcall %}
 
-<h2 class="section-title mt-6 mb-2">Добавить вебхук</h2>
-<div class="card card-p max-w-lg">
-  <form method="post" action="/webhooks" class="grid grid-cols-2 gap-4">
+{% call ui.panel("Добавить вебхук") %}
+  <form method="post" action="/webhooks" class="grid grid-cols-2 gap-4" style="padding:16px 18px">
+    <p class="col-span-2 text-xs muted">
+      На каждое событие алерта POST-запрос с JSON на указанные URL. Если задан секрет — подпись X-DomainGuard-Signature: sha256=… (HMAC тела).
+    </p>
     <div class="col-span-2">
       <label class="label" for="webhook_url">URL</label>
       <input id="webhook_url" name="url" required placeholder="https://example.com/hook" class="input input-mono" />
@@ -48,5 +48,5 @@
     </div>
     <div class="col-span-2"><button type="submit" class="btn btn-primary">Добавить</button></div>
   </form>
-</div>
+{% endcall %}
 {% endblock %}

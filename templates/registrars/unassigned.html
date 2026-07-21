@@ -2,9 +2,9 @@
 {% import "_components.html" as ui %}
 {% block title %}Неразобранные домены — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Неразобранные домены", subtitle="Домены, найденные синком регистратора и ещё не привязанные к проекту.") }}
+<p class="mb-4 text-sm text-slate-500 dark:text-slate-400">Домены, найденные синком регистратора и ещё не привязанные к проекту.</p>
 
-<div class="card overflow-x-auto">
+{% call ui.panel("Неразобранные домены (" ~ (unassigned | length) ~ ")") %}
   <table class="dg-table">
     <thead>
       <tr>
@@ -31,5 +31,5 @@
       {% endfor %}
     </tbody>
   </table>
-</div>
+{% endcall %}
 {% endblock %}

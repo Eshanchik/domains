@@ -43,7 +43,7 @@
           <th>SSL</th>
           <th>Auto-renew</th>
           <th>Активен</th>
-          <th class="w-10"></th>
+          <th style="width:56px"></th>
         </tr>
       </thead>
       <tbody>
@@ -61,7 +61,7 @@
           <td>{% if d.is_active %}<span style="color:var(--ok)">● up</span>{% else %}<span style="color:var(--mag)">○ down</span>{% endif %}</td>
           <td class="text-right">
             <details class="relative inline-block text-left">
-              <summary class="cursor-pointer list-none px-1.5 [&::-webkit-details-marker]:hidden" style="color:var(--dim)" aria-label="Действия">[ ⋮ ]</summary>
+              <summary class="kebab-btn cursor-pointer list-none whitespace-nowrap [&::-webkit-details-marker]:hidden" style="padding:2px 6px;letter-spacing:.1em" aria-label="Действия">[···]</summary>
               <div class="absolute right-0 z-20 mt-1 w-48 text-sm" style="background:var(--panel);border:1px solid var(--bd);box-shadow:0 8px 26px rgba(0,0,0,.6)">
                 <a href="/domains/{{ d.id }}" class="menu-item">&gt; Открыть</a>
                 {% if user.role.value in ("admin", "manager") %}
