@@ -760,7 +760,21 @@
   Тесты (unit helper: админ всегда / флаг гейтит не-админа; integration: create с
   флагом → true, edit без чекбокса → false). Основа для T46.
 
-- [ ] **T46. OAuth-сервер для MCP (claude.ai custom connector).**
+- [x] **T46. OAuth-сервер для MCP (claude.ai custom connector).** _(2026-07-21)_
+  `/mcp` теперь OAuth-защищён (FastMCP `auth_server_provider`+`AuthSettings`).
+  `oauth_provider.DomainGuardOAuthProvider` (реализует все 9 методов; клиенты/коды/
+  токены в Redis через `oauth_store`; `load_access_token` принимает **и** OAuth-токены,
+  **и** `dg_` API-токены). `authorize` кладёт запрос в Redis и редиректит на наш
+  `/oauth/consent` (api-app): требует логин (`?next=`), проверяет `user_may_use_mcp`,
+  «Разрешить/Отклонить» → минтит код → редирект на redirect_uri клиента. Токены несут
+  `subject=user_id`; инструменты берут юзера из `get_access_token().subject`.
+  Старый `TokenAuthMiddleware`/contextvar удалены. nginx: `/.well-known/oauth-*`,
+  `/authorize|token|register|revoke` → mcp-контейнер. DNS-rebinding guard SDK выключен
+  (nginx enforces server_name+TLS, клиент подключается server-side). `PUBLIC_BASE_URL`
+  в env. Проверено вживую: 401+RFC9728 metadata, AS-metadata, DCR, `/authorize`→consent,
+  consent рендерится (login+flag), **API-токен по-прежнему работает** + tool-вызов
+  резолвит юзера. Тесты (provider load_access_token api-fallback + store; consent:
+  login-gate/flag-deny/approve-issues-code/deny-error; login `next` local-only).
   `/mcp` становится OAuth-защищённым: в claude.ai вписываешь только URL → редирект
   на наш сервис → логин + экран согласия (проверка `user_may_use_mcp`) →
   «Разрешить/Отклонить» → Claude получает токен. Реализация: провайдер

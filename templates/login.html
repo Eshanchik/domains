@@ -3,6 +3,7 @@
 {% block content %}
 {% set oauth_2fa = oauth_2fa | default(false) %}
 <form method="post" action="{{ '/auth/google/2fa' if oauth_2fa else '/login' }}" style="background:rgba(16,21,31,.86);box-shadow:0 0 44px rgba(0,0,0,.6)">
+  {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}" />{% endif %}
   {# ── header frame ── #}
   <div class="flex items-center gap-1.5 px-3 py-2 text-xs" style="color:var(--cyan)">
     <span>╭─</span>

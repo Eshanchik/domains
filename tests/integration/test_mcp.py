@@ -8,8 +8,6 @@ from sqlalchemy import func, select
 
 from app.db import SessionLocal
 from app.mcp import tools
-from app.mcp.auth import TokenAuthMiddleware, _resolve_user_id
-from app.mcp.context import current_user_id
 from app.models.alert import AlertEvent
 from app.models.audit import AuditLog
 from app.models.domain import Domain
@@ -193,7 +191,7 @@ def test_import_domains_dry_run(make_user, make_company, make_project):
     assert count == 0  # dry run persisted nothing
 
 
-# --- token auth --------------------------------------------------------------
+# --- OAuth provider token auth -----------------------------------------------
 
 
 def _make_token(user_id: int) -> str:
@@ -206,53 +204,28 @@ def _make_token(user_id: int) -> str:
     return _run(_c())
 
 
-def test_resolve_user_id_valid_and_invalid(make_user):
+def test_load_access_token_accepts_api_token(make_user):
+    from app.mcp.oauth_provider import DomainGuardOAuthProvider
+
     info = make_user(login="tok", role=Role.admin)
     token = _make_token(info["id"])
+    provider = DomainGuardOAuthProvider()
 
-    assert _run(_resolve_user_id(token)) == info["id"]
-    assert _run(_resolve_user_id("dg_nope")) is None
-    assert _run(_resolve_user_id("")) is None
-
-
-def test_auth_middleware_rejects_missing_token():
-    called = {"inner": False}
-
-    async def inner(scope, receive, send):
-        called["inner"] = True
-
-    mw = TokenAuthMiddleware(inner)
-    events: list[dict] = []
-
-    async def send(msg):
-        events.append(msg)
-
-    async def receive():
-        return {"type": "http.request"}
-
-    scope = {"type": "http", "headers": []}
-    _run(mw(scope, receive, send))
-    assert called["inner"] is False  # never reached the app
-    assert events[0]["status"] == 401
+    # A valid DomainGuard API token resolves to an access token bound to the user.
+    at = _run(provider.load_access_token(token))
+    assert at is not None and at.subject == str(info["id"])
+    # Bad/empty tokens do not.
+    assert _run(provider.load_access_token("dg_nope")) is None
+    assert _run(provider.load_access_token("")) is None
 
 
-def test_auth_middleware_sets_context_for_valid_token(make_user):
-    info = make_user(login="tok2", role=Role.admin)
-    token = _make_token(info["id"])
-    seen: dict = {}
+def test_oauth_token_roundtrip_via_store():
+    from mcp.server.auth.provider import AccessToken
 
-    async def inner(scope, receive, send):
-        seen["uid"] = current_user_id.get()
+    from app.mcp import oauth_store as store
+    from app.mcp.oauth_provider import DomainGuardOAuthProvider
 
-    mw = TokenAuthMiddleware(inner)
-
-    async def send(msg):
-        pass
-
-    async def receive():
-        return {"type": "http.request"}
-
-    scope = {"type": "http", "headers": [(b"authorization", f"Bearer {token}".encode())]}
-    _run(mw(scope, receive, send))
-    assert seen["uid"] == info["id"]
-    assert current_user_id.get() is None  # reset after the request
+    # Issue + read back an OAuth access token through the store.
+    _run(store.put_access(AccessToken(token="acc123", client_id="c1", scopes=["mcp"], subject="7")))
+    got = _run(DomainGuardOAuthProvider().load_access_token("acc123"))
+    assert got is not None and got.subject == "7"
