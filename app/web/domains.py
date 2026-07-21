@@ -32,6 +32,21 @@ async def _project_in_scope(session: AsyncSession, user: User, project_id: int) 
     return auth_service.user_in_scope(user, company_id=project.company_id, project_id=project.id)
 
 
+def _int_or_none(value: str | None) -> int | None:
+    """Coerce an optional int query param, tolerating empty strings.
+
+    The domains filter form auto-submits every field, so unset selects arrive as
+    ``project_id=`` / ``expiring=`` (empty string). Treat blank (or non-numeric)
+    as "no filter" instead of raising a 422.
+    """
+    if value is None or value.strip() == "":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
 def _filter_from_query(
     company_id: int | None,
     project_id: int | None,
@@ -65,12 +80,12 @@ def _filter_from_query(
 @router.get("/domains", response_class=HTMLResponse)
 async def domains_list(
     request: Request,
-    company_id: int | None = Query(None),
-    project_id: int | None = Query(None),
+    company_id: str | None = Query(None),
+    project_id: str | None = Query(None),
     tag: str | None = Query(None),
-    registrar_id: int | None = Query(None),
+    registrar_id: str | None = Query(None),
     q: str | None = Query(None),
-    expiring: int | None = Query(None),
+    expiring: str | None = Query(None),
     vt_detect: bool = Query(False),
     health_down: bool = Query(False),
     archived: bool = Query(False),
@@ -80,6 +95,10 @@ async def domains_list(
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_user),
 ) -> HTMLResponse:
+    company_id = _int_or_none(company_id)
+    project_id = _int_or_none(project_id)
+    registrar_id = _int_or_none(registrar_id)
+    expiring = _int_or_none(expiring)
     flt = _filter_from_query(
         company_id,
         project_id,
@@ -131,18 +150,27 @@ async def domains_list(
 
 @router.get("/domains/export.csv", response_class=PlainTextResponse)
 async def domains_export(
-    company_id: int | None = Query(None),
-    project_id: int | None = Query(None),
+    company_id: str | None = Query(None),
+    project_id: str | None = Query(None),
     tag: str | None = Query(None),
-    registrar_id: int | None = Query(None),
+    registrar_id: str | None = Query(None),
     q: str | None = Query(None),
-    expiring: int | None = Query(None),
+    expiring: str | None = Query(None),
     archived: bool = Query(False),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_user),
 ) -> PlainTextResponse:
     flt = _filter_from_query(
-        company_id, project_id, tag, registrar_id, q, expiring, archived, "fqdn", "asc", 1
+        _int_or_none(company_id),
+        _int_or_none(project_id),
+        tag,
+        _int_or_none(registrar_id),
+        q,
+        _int_or_none(expiring),
+        archived,
+        "fqdn",
+        "asc",
+        1,
     )
     csv_text = await svc.export_csv(session, user, flt)
     return PlainTextResponse(
