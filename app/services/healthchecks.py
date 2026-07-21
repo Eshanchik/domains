@@ -7,10 +7,15 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import net_guard
 from app.core.audit import record_audit
 from app.models.domain import Domain
 from app.models.healthcheck import HealthCheck
 from app.schemas.healthcheck import HealthCheckCreate
+
+
+class InvalidHealthCheckUrl(ValueError):
+    """The health-check URL is not an allowed http(s) target."""
 
 
 async def list_for_domain(session: AsyncSession, domain_id: int) -> list[HealthCheck]:
@@ -27,6 +32,10 @@ async def get(session: AsyncSession, healthcheck_id: int) -> HealthCheck | None:
 async def create(
     session: AsyncSession, domain_id: int, data: HealthCheckCreate, *, actor_id: int
 ) -> HealthCheck:
+    try:
+        net_guard.validate_scheme(data.url)
+    except net_guard.UnsafeUrlError as exc:
+        raise InvalidHealthCheckUrl(str(exc)) from exc
     hc = HealthCheck(
         domain_id=domain_id,
         url=data.url,
@@ -78,10 +87,15 @@ async def bulk_add_template(
     domains = list(rows.scalars().all())
     now = datetime.now(UTC)
     for domain in domains:
+        url = template.url.replace("{fqdn}", domain.fqdn)
+        try:
+            net_guard.validate_scheme(url)
+        except net_guard.UnsafeUrlError as exc:
+            raise InvalidHealthCheckUrl(str(exc)) from exc
         session.add(
             HealthCheck(
                 domain_id=domain.id,
-                url=template.url.replace("{fqdn}", domain.fqdn),
+                url=url,
                 method=template.method.upper(),
                 follow_redirects=template.follow_redirects,
                 expected_statuses=template.expected_statuses,

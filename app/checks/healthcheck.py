@@ -18,6 +18,7 @@ import httpx
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import net_guard
 from app.models.healthcheck import HealthCheck, HealthCheckResult
 
 log = logging.getLogger("checks.healthcheck")
@@ -62,14 +63,30 @@ class HealthOutcome:
 async def _perform(
     hc: HealthCheck, client: httpx.AsyncClient
 ) -> tuple[bool, int | None, int | None, str | None]:
+    # SSRF guard: never fetch a URL that resolves to a private/reserved address.
+    try:
+        net_guard.validate_public_url(hc.url)
+    except net_guard.UnsafeUrlError as exc:
+        return False, None, None, f"blocked url: {exc}"
     start = time.monotonic()
     try:
+        # Follow redirects manually so each hop is re-validated (a public URL may
+        # 3xx to an internal one). When the check does not follow redirects we keep
+        # the 3xx response so location_pattern matching still works.
         resp = await client.request(
-            hc.method.upper(),
-            hc.url,
-            follow_redirects=hc.follow_redirects,
-            timeout=hc.timeout_s,
+            hc.method.upper(), hc.url, follow_redirects=False, timeout=hc.timeout_s
         )
+        hops = 0
+        while hc.follow_redirects and resp.is_redirect and hops < 5:
+            location = resp.headers.get("location")
+            if not location:
+                break
+            nxt = str(resp.url.join(location))
+            net_guard.validate_public_url(nxt)
+            resp = await client.request("GET", nxt, follow_redirects=False, timeout=hc.timeout_s)
+            hops += 1
+    except net_guard.UnsafeUrlError as exc:
+        return False, None, None, f"blocked redirect: {exc}"
     except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPError) as exc:
         return False, None, None, f"request failed: {exc}"
 

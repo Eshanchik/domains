@@ -5,11 +5,19 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import pytest
 import respx
 
 from app.checks.healthcheck import run_healthcheck
 from app.db import SessionLocal, get_redis
 from app.models.healthcheck import HealthCheck
+
+
+@pytest.fixture(autouse=True)
+def _public_dns(monkeypatch):
+    """Resolve every host to a public IP so the SSRF guard allows the mocked URLs
+    without touching real DNS."""
+    monkeypatch.setattr("app.core.net_guard._resolve", lambda host: ["93.184.216.34"])
 
 
 def _run(coro):
@@ -166,3 +174,53 @@ def test_bulk_template_substitutes_fqdn(make_company, make_project, make_domain)
     n, urls = _run(run())
     assert n == 2
     assert urls == {"https://one.com/health", "https://two.com/health"}
+
+
+def test_ssrf_blocked_when_url_resolves_private(
+    make_company, make_project, make_domain, monkeypatch
+):
+    # Host resolves to a private address → the worker must refuse to fetch it.
+    monkeypatch.setattr("app.core.net_guard._resolve", lambda host: ["169.254.169.254"])
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="rebind.example")
+    hc = _make_hc(dom, url="http://rebind.example/latest/meta-data/", expected_statuses="200")
+
+    called = {"n": 0}
+    router = respx.mock(assert_all_called=False)
+    router.route().mock(side_effect=lambda req: called.__setitem__("n", called["n"] + 1))
+
+    async def run():
+        redis = get_redis()
+        try:
+            with router:
+                async with SessionLocal() as s:
+                    out = await run_healthcheck(s, redis, hc)
+            return out.ok, out.error
+        finally:
+            await redis.aclose()
+
+    ok, error = _run(run())
+    assert ok is False
+    assert error and "blocked url" in error
+    assert called["n"] == 0  # never issued the HTTP request
+
+
+def test_create_rejects_non_http_url(make_company, make_project, make_domain):
+    from app.schemas.healthcheck import HealthCheckCreate
+    from app.services import healthchecks as svc
+
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="ex.com")
+
+    async def run():
+        async with SessionLocal() as s:
+            data = HealthCheckCreate(url="file:///etc/passwd", expected_statuses="200")
+            try:
+                await svc.create(s, dom, data, actor_id=None)
+                return "created"
+            except svc.InvalidHealthCheckUrl:
+                return "rejected"
+
+    assert _run(run()) == "rejected"

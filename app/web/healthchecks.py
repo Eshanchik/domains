@@ -79,7 +79,13 @@ async def create_healthcheck(
         interval_min,
         fail_threshold,
     )
-    await svc.create(session, domain_id, data, actor_id=user.id)
+    try:
+        await svc.create(session, domain_id, data, actor_id=user.id)
+    except svc.InvalidHealthCheckUrl:
+        return PlainTextResponse(
+            "Недопустимый URL: разрешены только http(s) и публичные адреса.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
     return RedirectResponse(f"/domains/{domain_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
