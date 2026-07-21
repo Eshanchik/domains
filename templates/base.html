@@ -1,22 +1,23 @@
-{# Base layout — Terminal UI skin (T30, from the "DomainGuard Terminal" Claude
-   Design project). Stack unchanged: Jinja2 + HTMX + Tailwind (Play CDN, no build).
-   The whole reskin lives here: a var-backed palette remap (so hardcoded slate/
-   white utilities on pages retint automatically) + a rewritten component layer.
-   Two themes: amber (default) and green, toggled in the topbar. UI text is Russian. #}
+{# Base layout — Terminal/BTOP skin (T32, from the "DomainGuard Terminal - BTOP"
+   Claude Design project). Stack unchanged: Jinja2 + HTMX + Tailwind (Play CDN, no
+   build). The reskin lives here: a var-backed palette remap (so hardcoded slate/
+   white utilities on pages retint) + a rewritten component layer. Accent themes:
+   green (default) and amber, toggled in the topbar. UI text is Russian. #}
 {% import "_components.html" as ui %}
 <!doctype html>
-<html lang="ru" class="h-full dark" data-theme="amber">
+<html lang="ru" class="h-full dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}DomainGuard{% endblock %}</title>
-    {# Apply saved theme before paint (default amber). `dark` stays on always so
+    {# Apply saved accent before paint (default green). `dark` stays on always so
        the pages' dark: utilities engage against the remapped palette. #}
     <script>
       (function () {
         try {
-          var t = localStorage.getItem("dg-term-theme");
-          document.documentElement.setAttribute("data-theme", t === "green" ? "green" : "amber");
+          if (localStorage.getItem("dg-term-theme") === "amber") {
+            document.documentElement.setAttribute("data-theme", "amber");
+          }
         } catch (e) {}
         document.documentElement.classList.add("dark");
       })();
@@ -39,17 +40,17 @@
                 return {50:v,100:v,200:v,300:v,400:v,500:v,600:v,700:v,800:v,900:v,950:v};
               };
               return {
-                white: "var(--term-fg)",
-                black: "var(--term-bg)",
+                white: "var(--tx)",
+                black: "var(--bg)",
                 slate: {
-                  50: "var(--term-panel-2)", 100: "var(--term-fg)", 200: "var(--term-fg)",
-                  300: "var(--term-fg-dim)", 400: "var(--term-fg-dim)", 500: "var(--term-fg-dim)",
-                  600: "var(--term-fg-dim)", 700: "var(--term-border)", 800: "var(--term-panel-2)",
-                  900: "var(--term-panel)", 950: "var(--term-bg)",
+                  50: "var(--panel-2)", 100: "var(--tx)", 200: "var(--tx)",
+                  300: "var(--dim)", 400: "var(--dim)", 500: "var(--dim)",
+                  600: "var(--dim)", 700: "var(--bd)", 800: "var(--panel-2)",
+                  900: "var(--panel)", 950: "var(--bg)",
                 },
-                emerald: t("var(--term-ok)"), red: t("var(--term-fail)"),
-                amber: t("var(--term-warn)"), sky: t("var(--term-info)"),
-                brand: t("var(--term-bright)"), indigo: t("var(--term-bright)"),
+                emerald: t("var(--ok)"), red: t("var(--red)"),
+                amber: t("var(--amber)"), sky: t("var(--cyan)"),
+                brand: t("var(--acc)"), indigo: t("var(--acc)"),
               };
             })(),
           },
@@ -59,32 +60,27 @@
     <script src="https://unpkg.com/htmx.org@2.0.0"></script>
     <style type="text/tailwindcss">
       :root {
-        --term-bg:#05080a; --term-panel:#0a0f0c; --term-panel-2:#0e150f;
-        --term-border:#1c2a20; --term-grid:#12331f; --term-fg-faint:#4a6b56;
-        --term-ok:#33ff66; --term-warn:#ffb000; --term-fail:#ff5a5a; --term-info:#35c3ff;
-        --term-fg:#ffd08a; --term-fg-dim:#b89162; --term-bright:#ffb000; --term-bright-2:#ffc233;
-        --term-glow:0 0 6px rgba(255,176,0,.4);
+        --bg:#0b0e14; --panel:#10151f; --panel-2:#0d1219; --bd:#1d2636; --grid:#243149;
+        --tx:#cfe3ff; --dim:#5b6b82; --faint:#35415a;
+        --ok:#7dff9b; --cyan:#59e6ff; --mag:#ff6ac1; --amber:#ffcf5b; --red:#ff5c7a;
+        --acc:#7dff9b;
       }
-      :root[data-theme="green"] {
-        --term-fg:#b7ffcf; --term-fg-dim:#5f8f6f; --term-bright:#33ff66; --term-bright-2:#00ff41;
-        --term-glow:0 0 6px rgba(51,255,102,.4);
-      }
+      :root[data-theme="amber"] { --acc:#ffcf5b; }
       @layer base {
-        html, body { background: var(--term-bg); color: var(--term-fg); }
+        html, body { background: var(--bg); color: var(--tx); }
         body {
           font-family: "JetBrains Mono","IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
           font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased;
         }
-        ::selection { background: var(--term-bright); color: var(--term-bg); }
+        ::selection { background: var(--acc); color: var(--bg); }
         ::-webkit-scrollbar { width: 9px; height: 9px; }
-        ::-webkit-scrollbar-thumb { background: var(--term-border); }
-        ::-webkit-scrollbar-track { background: var(--term-panel); }
+        ::-webkit-scrollbar-thumb { background: var(--bd); }
+        ::-webkit-scrollbar-track { background: var(--panel); }
         input, select, textarea, button { font-family: inherit; font-size: 13px; }
         summary::-webkit-details-marker { display: none; }
-        h1, h2, h3 { color: var(--term-fg); }
-        /* CRT vignette + scanlines (scanlines only when motion is allowed). */
+        h1, h2, h3 { color: var(--tx); }
         body::before { content:""; position:fixed; inset:0; pointer-events:none; z-index:9997;
-          background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.6) 100%); }
+          background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%); }
       }
       @media (prefers-reduced-motion: no-preference) {
         body::after { content:""; position:fixed; inset:0; pointer-events:none; z-index:9998;
@@ -93,116 +89,116 @@
       }
       @keyframes dg-blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
       @layer components {
-        /* Surfaces — bordered CLI panels, no radius/shadow. */
-        .card { background: var(--term-panel); border: 1px solid var(--term-border); border-radius: 0; }
+        /* Surfaces — btop panels. */
+        .card { background: var(--panel); border: 1px solid var(--bd); border-radius: 0; }
         .card-p { padding: 16px 18px; }
 
         /* Typography */
-        .page-title { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em;
-          color: var(--term-fg); text-shadow: var(--term-glow); }
-        .page-title-count { margin-left: 6px; font-weight: 400; color: var(--term-fg-dim); }
-        .section-title { margin-bottom: 10px; font-size: 11px; font-weight: 500; text-transform: uppercase;
-          letter-spacing: .09em; color: var(--term-fg-dim); }
-        .section-title::before { content: "// "; color: var(--term-border); }
-        .link { color: var(--term-bright); }
-        .link:hover { text-shadow: var(--term-glow); }
-        .muted { color: var(--term-fg-dim); }
+        .page-title { font-size: 16px; font-weight: 700; letter-spacing: .06em; color: var(--tx); }
+        .page-title-count { margin-left: 6px; font-weight: 400; color: var(--dim); }
+        .section-title { margin-bottom: 10px; font-size: 12px; font-weight: 700; letter-spacing: .06em;
+          color: var(--tx); }
+        .section-title::before { content: "╭─ "; color: var(--cyan); font-weight: 400; }
+        .link { color: var(--acc); }
+        .link:hover { filter: brightness(1.15); }
+        .muted { color: var(--dim); }
 
-        /* Buttons — bracketed, uppercase, square. */
+        /* Buttons — bracketed, uppercase. */
         .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px;
-          font-family: inherit; font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
-          padding: 7px 12px; border: 1px solid var(--term-border); border-radius: 0;
-          background: transparent; color: var(--term-fg); cursor: pointer; white-space: nowrap;
-          transition: background .1s, color .1s, box-shadow .1s; }
+          font-family: inherit; font-size: 12px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: .06em; padding: 6px 12px; border: 1px solid var(--bd); border-radius: 0;
+          background: transparent; color: var(--tx); cursor: pointer; white-space: nowrap;
+          transition: background .1s, color .1s, border-color .1s, filter .1s; }
         .btn::before { content: "[ "; }
         .btn::after { content: " ]"; }
-        .btn:focus-visible { outline: 1px solid var(--term-bright); outline-offset: 1px; }
-        .btn-primary { border-color: var(--term-bright); background: var(--term-bright); color: var(--term-bg);
-          box-shadow: var(--term-glow); }
-        .btn-primary:hover { background: var(--term-bright-2); border-color: var(--term-bright-2); }
-        .btn-secondary:hover, .btn-ghost:hover { background: var(--term-bright); color: var(--term-bg);
-          border-color: var(--term-bright); }
+        .btn:focus-visible { outline: 1px solid var(--acc); outline-offset: 1px; }
+        .btn-primary { border-color: transparent; background: var(--acc); color: var(--bg); }
+        .btn-primary:hover { filter: brightness(1.12); }
+        .btn-secondary:hover, .btn-ghost:hover { border-color: var(--acc); color: var(--acc); }
         .btn-ghost { border-color: transparent; }
-        .btn-danger { border-color: var(--term-fail); color: var(--term-fail); }
-        .btn-danger:hover { background: var(--term-fail); color: var(--term-bg); }
-        .btn-link-danger { color: var(--term-fail); }
-        .btn-link-danger:hover { text-shadow: 0 0 6px rgba(255,90,90,.5); }
-        .btn-sm { padding: 4px 9px; font-size: 11px; }
+        .btn-danger { border-color: var(--red); color: var(--red); }
+        .btn-danger:hover { background: var(--red); color: var(--bg); }
+        .btn-link-danger { color: var(--red); }
+        .btn-link-danger:hover { filter: brightness(1.2); }
+        .btn-sm { padding: 3px 9px; font-size: 11px; }
 
         /* Form controls */
         .label { display:block; margin-bottom: 4px; font-size: 11px; text-transform: uppercase;
-          letter-spacing: .06em; color: var(--term-fg-dim); }
-        .input, .select, .textarea { width:100%; border-radius: 0; border: 1px solid var(--term-border);
-          background: var(--term-bg); padding: 7px 10px; font-size: 13px; color: var(--term-fg);
-          caret-color: var(--term-bright); }
-        .input::placeholder, .textarea::placeholder { color: var(--term-fg-faint); }
-        .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--term-bright);
-          box-shadow: var(--term-glow); }
-        .input:disabled { color: var(--term-fg-dim); background: var(--term-panel); }
+          letter-spacing: .06em; color: var(--dim); }
+        .input, .select, .textarea { width:100%; border-radius: 0; border: 1px solid var(--bd);
+          background: var(--bg); padding: 7px 10px; font-size: 13px; color: var(--tx);
+          caret-color: var(--acc); }
+        .input::placeholder, .textarea::placeholder { color: var(--faint); }
+        .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--acc);
+          box-shadow: 0 0 0 1px var(--acc); }
+        .input:disabled { color: var(--dim); background: var(--panel); }
         .input-mono { font-family: inherit; }
-        .checkbox { width: 14px; height: 14px; accent-color: var(--term-bright); }
+        .checkbox { width: 14px; height: 14px; accent-color: var(--acc); }
 
-        /* Badges — bracketed status tokens, no pill. */
-        .badge { display:inline-flex; align-items:center; font-size: 11px; font-weight: 500;
-          text-transform: uppercase; letter-spacing: .04em; }
-        .badge::before { content: "["; opacity: .7; }
-        .badge::after { content: "]"; opacity: .7; }
-        .badge-gray { color: var(--term-fg-dim); }
-        .badge-green { color: var(--term-ok); }
-        .badge-red { color: var(--term-fail); }
-        .badge-amber { color: var(--term-warn); }
-        .badge-blue { color: var(--term-info); }
-        .badge-indigo { color: var(--term-bright); }
+        /* Badges — btop glyph tokens. */
+        .badge { display:inline-flex; align-items:center; font-size: 12px; font-weight: 500;
+          text-transform: uppercase; letter-spacing: .03em; }
+        .badge-gray { color: var(--dim); }
+        .badge-green { color: var(--ok); }
+        .badge-green::before { content: "✔\00a0"; }
+        .badge-amber { color: var(--amber); }
+        .badge-amber::before { content: "◆\00a0"; }
+        .badge-red { color: var(--mag); }
+        .badge-red::before { content: "●\00a0"; }
+        .badge-blue { color: var(--cyan); }
+        .badge-blue::before { content: "·\00a0"; }
+        .badge-indigo { color: var(--acc); }
 
         /* Flash — log lines. */
-        .flash { margin-bottom: 14px; padding: 10px 14px; border: 1px solid var(--term-border);
-          border-left-width: 3px; background: var(--term-panel); font-size: 13px; }
-        .flash-error { border-left-color: var(--term-fail); color: var(--term-fail); }
-        .flash-error::before { content: "!! "; }
-        .flash-success { border-left-color: var(--term-ok); color: var(--term-ok); }
-        .flash-success::before { content: ">> "; }
-        .flash-info { border-left-color: var(--term-info); color: var(--term-info); }
-        .flash-info::before { content: "-- "; }
+        .flash { margin-bottom: 14px; padding: 10px 14px; border: 1px solid var(--bd);
+          border-left-width: 3px; background: var(--panel); font-size: 13px; }
+        .flash-error { border-left-color: var(--mag); color: var(--mag); }
+        .flash-error::before { content: "● "; }
+        .flash-success { border-left-color: var(--ok); color: var(--ok); }
+        .flash-success::before { content: "✔ "; }
+        .flash-info { border-left-color: var(--cyan); color: var(--cyan); }
+        .flash-info::before { content: "· "; }
 
         /* Tables — CLI output. */
         .dg-table { width:100%; border-collapse: collapse; font-size: 13px; }
-        .dg-table thead th, .th { text-align:left; padding: 7px 14px; font-weight: 500; font-size: 11px;
-          text-transform: uppercase; letter-spacing: .08em; color: var(--term-fg-dim);
-          border-bottom: 1px solid var(--term-border); }
-        .dg-table tbody td, .td { padding: 6px 14px; border-bottom: 1px solid var(--term-border); }
-        .dg-table tbody tr:nth-child(even) { background: var(--term-panel-2); }
-        .dg-table tbody tr:hover { box-shadow: inset 3px 0 0 var(--term-bright); background: rgba(255,255,255,.03); }
+        .dg-table thead th, .th { text-align:left; padding: 6px 16px; font-weight: 500; font-size: 11px;
+          text-transform: uppercase; letter-spacing: .08em; color: var(--dim);
+          border-bottom: 1px solid var(--bd); }
+        .dg-table tbody td, .td { padding: 6px 16px; border-bottom: 1px solid var(--bd); }
+        .dg-table tbody tr:nth-child(even) { background: var(--panel-2); }
+        .dg-table tbody tr:hover { box-shadow: inset 3px 0 0 var(--acc); background: rgba(89,230,255,.05); }
 
         /* Stat tiles */
-        .stat { display:block; border: 1px solid var(--term-border); background: var(--term-panel);
-          padding: 14px 16px; border-radius: 0; }
-        .stat:hover { border-color: var(--term-bright); }
-        .stat-value { font-size: 30px; font-weight: 700; line-height: 1; color: var(--term-bright);
-          text-shadow: var(--term-glow); }
-        .stat-label { margin-top: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
-          color: var(--term-fg-dim); }
-        .stat-danger .stat-value { color: var(--term-fail); }
+        .stat { display:block; border: 1px solid var(--bd); background: var(--panel);
+          padding: 12px 16px; border-radius: 0; }
+        .stat:hover { border-color: var(--acc); }
+        .stat-value { font-size: 26px; font-weight: 700; line-height: 1.2; color: var(--acc); }
+        .stat-label { margin-top: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+          color: var(--dim); }
+        .stat-danger .stat-value { color: var(--mag); }
 
         /* Sidebar nav — command list. */
         .nav-link { display:flex; align-items:center; gap: 0; padding: 4px 8px; margin-bottom: 1px;
-          font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--term-fg);
+          font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--tx);
           white-space: nowrap; border-radius: 0; }
         .nav-link svg { display: none; }
-        .nav-link::before { content: "> "; white-space: pre; }
-        .nav-link:hover { background: var(--term-bright); color: var(--term-bg); }
-        .nav-link.active { background: var(--term-bright); color: var(--term-bg); box-shadow: var(--term-glow); }
-        .nav-section { padding: 0 8px 6px; font-size: 11px; letter-spacing: .08em; color: var(--term-fg-faint);
+        .nav-link::before { content: "> "; white-space: pre; color: var(--dim); }
+        .nav-link:hover { background: var(--acc); color: var(--bg); }
+        .nav-link:hover::before { color: var(--bg); }
+        .nav-link.active { background: var(--acc); color: var(--bg); font-weight: 700; }
+        .nav-link.active::before { color: var(--bg); }
+        .nav-section { padding: 0 8px 6px; font-size: 11px; letter-spacing: .08em; color: var(--faint);
           text-transform: uppercase; }
         .nav-section::before { content: "# "; }
 
         /* Theme switch buttons in the topbar. */
-        :root[data-theme="amber"] [data-theme-btn="amber"],
-        :root[data-theme="green"] [data-theme-btn="green"] {
-          color: var(--term-bright); text-shadow: var(--term-glow);
-        }
+        [data-theme-btn="green"] { color: var(--dim); }
+        [data-theme-btn="amber"] { color: var(--dim); }
+        :root:not([data-theme="amber"]) [data-theme-btn="green"] { color: var(--ok); }
+        :root[data-theme="amber"] [data-theme-btn="amber"] { color: var(--amber); }
       }
-      .dg-caret { display:inline-block; width:.5em; height:1.05em; background: var(--term-bright);
-        box-shadow: var(--term-glow); vertical-align: text-bottom; animation: dg-blink 1.05s step-end infinite; }
+      .dg-caret { display:inline-block; width:.5em; height:1.05em; background: var(--acc);
+        vertical-align: text-bottom; animation: dg-blink 1.05s step-end infinite; }
     </style>
   </head>
   <body class="h-full">
@@ -237,10 +233,10 @@
         {# ---- Sidebar ---- #}
         <aside id="dg-sidebar"
                class="fixed inset-y-0 left-0 z-30 hidden w-52 flex-col px-3 py-4 lg:flex"
-               style="background:var(--term-panel);border-right:1px solid var(--term-border)">
+               style="background:var(--panel);border-right:1px solid var(--bd)">
           <div class="mb-4 px-2">
-            <span class="text-sm font-bold tracking-widest" style="color:var(--term-bright);text-shadow:var(--term-glow)">DOMAINGUARD</span>
-            <div class="text-[10px]" style="color:var(--term-fg-faint)">// secure domain monitor</div>
+            <span class="text-sm font-bold tracking-widest" style="color:var(--acc)">DOMAINGUARD</span>
+            <div class="text-[10px]" style="color:var(--faint)">// secure domain monitor</div>
           </div>
           <nav class="flex-1 space-y-0.5 overflow-y-auto">
             {% for section_title, items in nav_sections %}
@@ -260,18 +256,19 @@
         {# ---- Main column ---- #}
         <div class="flex min-w-0 flex-1 flex-col lg:pl-52">
           <header class="sticky top-0 z-20 flex h-11 items-center gap-3 px-4"
-                  style="background:var(--term-panel);border-bottom:1px solid var(--term-border)">
+                  style="background:var(--panel);border-bottom:1px solid var(--bd)">
             <button type="button" onclick="document.getElementById('dg-sidebar').classList.toggle('hidden')"
                     class="btn btn-ghost btn-sm lg:hidden" aria-label="Меню">≡</button>
-            <span class="text-xs" style="color:var(--term-fg-dim)">
-              <span style="color:var(--term-bright);text-shadow:var(--term-glow)">dg@domainguard</span>:<span style="color:var(--term-info)">~{{ path if path != '/' else '' }}</span>$<span class="dg-caret ml-0.5"></span>
+            <span class="text-xs" style="color:var(--dim)">
+              <span style="color:var(--acc)">dg@domainguard</span>:<span style="color:var(--cyan)">~{{ path if path != '/' else '' }}</span>$<span class="dg-caret ml-0.5"></span>
             </span>
             <span class="flex-1"></span>
-            <span class="hidden text-xs sm:inline" style="color:var(--term-fg-dim)">user=<span style="color:var(--term-fg)">{{ user.login }}</span> role=<span style="color:var(--term-fg)">{{ user.role.value }}</span></span>
-            <button type="button" data-theme-btn="amber" onclick="dgSetTheme('amber')" class="text-xs" style="background:none;border:none;cursor:pointer;color:var(--term-fg-dim)">[amber]</button>
-            <button type="button" data-theme-btn="green" onclick="dgSetTheme('green')" class="text-xs" style="background:none;border:none;cursor:pointer;color:var(--term-fg-dim)">[green]</button>
+            <span class="hidden text-xs md:inline" style="color:var(--dim)">net <span style="color:var(--ok)">ok</span></span>
+            <span class="hidden text-xs sm:inline" style="color:var(--dim)">user=<span style="color:var(--tx)">{{ user.login }}</span> role=<span style="color:var(--tx)">{{ user.role.value }}</span></span>
+            <button type="button" data-theme-btn="green" onclick="dgSetTheme('green')" class="text-xs" style="background:none;border:none;cursor:pointer">[green]</button>
+            <button type="button" data-theme-btn="amber" onclick="dgSetTheme('amber')" class="text-xs" style="background:none;border:none;cursor:pointer">[amber]</button>
             <form method="post" action="/logout">
-              <button type="submit" class="text-xs" style="background:none;border:none;cursor:pointer;color:var(--term-fail)" title="Выйти">[exit]</button>
+              <button type="submit" class="text-xs" style="background:none;border:none;cursor:pointer;color:var(--red)" title="Выйти">[exit]</button>
             </form>
           </header>
           <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
@@ -281,20 +278,26 @@
       </div>
       <script>
         function dgSetTheme(t) {
-          document.documentElement.setAttribute("data-theme", t);
+          if (t === "amber") document.documentElement.setAttribute("data-theme", "amber");
+          else document.documentElement.removeAttribute("data-theme");
           try { localStorage.setItem("dg-term-theme", t); } catch (e) {}
         }
       </script>
     {% else %}
-      {# Unauthenticated shell (login): matrix rain behind a terminal panel. #}
+      {# Unauthenticated shell (login): matrix rain behind a rounded terminal box. #}
       <div class="relative flex min-h-full flex-col items-center justify-center px-4 py-12" style="overflow:hidden">
         <canvas id="dg-matrix" class="pointer-events-none absolute inset-0 h-full w-full" style="opacity:.4;z-index:0"></canvas>
         <div class="relative w-full max-w-md" style="z-index:1">
-          <div class="mb-3 text-center">
-            <span class="text-lg font-bold tracking-widest" style="color:var(--term-bright);text-shadow:var(--term-glow)">DOMAINGUARD</span>
-            <div class="text-[11px]" style="color:var(--term-fg-faint)">// secure domain monitor</div>
+          <div class="mb-1 flex items-center gap-1.5 px-1 text-xs" style="color:var(--cyan)">
+            <span>╭─</span>
+            <span class="font-bold tracking-wider" style="color:var(--tx)">DOMAINGUARD</span>
+            <span class="flex-1 overflow-hidden whitespace-nowrap">──────────────────────</span>
+            <span>╮</span>
           </div>
           {{ self.content() }}
+          <div class="mt-1 flex px-1 text-xs" style="color:var(--cyan)">
+            <span>╰</span><span class="flex-1 overflow-hidden whitespace-nowrap">──────────────────────────────</span><span>╯</span>
+          </div>
         </div>
       </div>
       <script>
@@ -304,7 +307,7 @@
           var ctx = c.getContext("2d"), fs = 14;
           var chars = "アイウエオカキクケコサシスセソタチツテトナニ0123456789<>#$%&*";
           var cols, drops, last = 0, raf;
-          function rgb() { return getComputedStyle(document.documentElement).getPropertyValue("--term-bright").trim() === "#33ff66" ? "51,255,102" : "255,176,0"; }
+          function rgb() { return document.documentElement.getAttribute("data-theme") === "amber" ? "255,207,91" : "125,255,155"; }
           function resize() { c.width = c.offsetWidth; c.height = c.offsetHeight; cols = Math.ceil(c.width / fs);
             drops = new Array(cols).fill(0).map(function () { return Math.random() * -40; }); }
           resize();
@@ -312,7 +315,7 @@
             raf = requestAnimationFrame(draw);
             if (t - last < 60) return; last = t;
             if (c.offsetWidth !== c.width) resize();
-            ctx.fillStyle = "rgba(5,8,10,0.14)"; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.fillStyle = "rgba(11,14,20,0.14)"; ctx.fillRect(0, 0, c.width, c.height);
             ctx.font = fs + "px monospace";
             var col = rgb();
             for (var i = 0; i < cols; i++) {
