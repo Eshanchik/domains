@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 
 import pytest
 
 from app.connectors.base import ConnectorError
-from app.connectors.namecheap import PAGE_SIZE, NamecheapConnector, _parse_page
+from app.connectors.namecheap import PAGE_SIZE, NamecheapConnector, _parse_page, _parse_pricing
 
 OK_XML = """<?xml version="1.0" encoding="utf-8"?>
 <ApiResponse Status="OK" xmlns="http://api.namecheap.com/xml.response">
@@ -61,3 +62,56 @@ def test_pagination_walks_all_pages(monkeypatch) -> None:
     monkeypatch.setattr(conn, "_fetch_page", fake_fetch)
     domains = asyncio.run(conn.list_domains())
     assert len(domains) == PAGE_SIZE + 3  # stopped after the short page
+
+
+PRICING_XML = """<?xml version="1.0" encoding="utf-8"?>
+<ApiResponse Status="OK" xmlns="http://api.namecheap.com/xml.response">
+  <CommandResponse Type="namecheap.users.getPricing">
+    <UserGetPricingResult>
+      <ProductType Name="domains">
+        <ProductCategory Name="register">
+          <Product Name="com">
+            <Price Duration="1" DurationType="YEAR" Price="9.06" YourPrice="9.06" Currency="USD" />
+          </Product>
+        </ProductCategory>
+        <ProductCategory Name="renew">
+          <Product Name="com">
+            <Price Duration="1" DurationType="YEAR" Price="11.48" YourPrice="10.98" Currency="USD"/>
+            <Price Duration="2" DurationType="YEAR" Price="22.00" YourPrice="21.00" Currency="USD"/>
+          </Product>
+          <Product Name="io">
+            <Price Duration="1" DurationType="YEAR" Price="34.98" Currency="USD" />
+          </Product>
+        </ProductCategory>
+      </ProductType>
+    </UserGetPricingResult>
+  </CommandResponse>
+</ApiResponse>"""
+
+
+def test_parse_pricing_picks_one_year_renew() -> None:
+    prices = _parse_pricing(PRICING_XML)
+    assert set(prices) == {"com", "io"}
+    # YourPrice preferred over Price; only the 1-year row is used.
+    assert prices["com"].price == Decimal("10.98")
+    assert prices["com"].currency == "USD"
+    # Falls back to Price when YourPrice is absent.
+    assert prices["io"].price == Decimal("34.98")
+
+
+def test_parse_pricing_error_raises() -> None:
+    import pytest as _pytest
+
+    with _pytest.raises(ConnectorError):
+        _parse_pricing(ERROR_XML)
+
+
+def test_get_renewal_prices_uses_fetch_seam(monkeypatch) -> None:
+    conn = NamecheapConnector(api_user="u", api_key="k", username="u", client_ip="1.2.3.4")
+
+    async def fake_fetch() -> str:
+        return PRICING_XML
+
+    monkeypatch.setattr(conn, "_fetch_pricing", fake_fetch)
+    prices = asyncio.run(conn.get_renewal_prices())
+    assert prices["com"].price == Decimal("10.98")

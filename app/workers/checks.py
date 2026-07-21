@@ -158,6 +158,24 @@ async def _sync_registrar_account(account_id: int) -> None:
             report.staged,
             report.error,
         )
+        # Namecheap accounts: also refresh renewal pricing → domain cost.
+        registrar = await session.get(reg.Registrar, account.registrar_id)
+        if registrar is not None and registrar.connector_type == "namecheap":
+            from app.services import pricing
+
+            redis = get_redis()
+            try:
+                pr = await pricing.refresh_account_pricing(session, account, redis=redis)
+                log.info(
+                    "registrar pricing account=%s tlds=%s priced=%s cache=%s error=%s",
+                    account_id,
+                    pr.tlds,
+                    pr.priced,
+                    pr.from_cache,
+                    pr.error,
+                )
+            finally:
+                await redis.aclose()
 
 
 @dramatiq.actor(max_retries=2, queue_name="sync")

@@ -554,7 +554,21 @@
   - DoD: чек-лист расхождений в задаче + фиксы; полный web-QA (`scratchpad/qa.py`)
     зелёный; ruff+format чисто; скриншоты ключевых экранов до/после (вживую).
 
-- [ ] **T36. Namecheap: тянуть цену продления через API → в расходы.**
+- [x] **T36. Namecheap: тянуть цену продления через API → в расходы.** _(2026-07-21)_
+  `connectors/namecheap.py`: метод `get_renewal_prices()` → `namecheap.users.getPricing`
+  (ProductType=DOMAIN, ActionName=RENEW), парсер `_parse_pricing` берёт 1-летнюю
+  RENEW-цену по TLD (`YourPrice`→`Price`, валюта), сетевой шов `_fetch_pricing`.
+  Новый `services/pricing.py`: `get_pricing_map` (кэш TLD→цена в Redis, TTL 24ч;
+  холодный кэш → фетч через токен-бакет `namecheap` + circuit breaker + `with_retry`;
+  ошибка/rate-limit/circuit → `({}, error)`, не роняет) и `refresh_account_pricing`
+  (применяет карту к доменам аккаунта: `registrar_account_id==acc.id & is_active`,
+  ставит `renewal_price/renewal_currency`, источник `api-namecheap`, идемпотентно,
+  **manual не перетирается**). Встроено в воркер `_sync_registrar_account` для
+  namecheap-аккаунтов (тот же 6ч-синк; кэш экономит вызовы API). **Без миграции**
+  (`renewal_price/currency` уже есть; источник — в `field_sources`). Тесты 203
+  (парсер: 1yr/YourPrice/ошибка; сервис: применение по TLD, manual-safe,
+  идемпотентность, кэш экономит 2-й вызов, API-ошибка→report без краха,
+  circuit-open→без фетча). SPEC FR-RG-7.
   Реализовать в `connectors/namecheap.py` вызовы Namecheap API для стоимости
   продления: `namecheap.users.getPricing` (ProductType=DOMAIN, Action=RENEW) по TLD
   домена, кэш в Redis (цены меняются редко), запись в стоимость продления домена

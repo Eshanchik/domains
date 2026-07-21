@@ -8,11 +8,12 @@ tests patch/mocked via respx.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
 
 import httpx
 
-from app.connectors.base import ConnectorError, RegistrarConnector, RegistrarDomain
+from app.connectors.base import ConnectorError, RegistrarConnector, RegistrarDomain, TldPrice
 
 API_URL = "https://api.namecheap.com/xml.response"
 _NS = "http://api.namecheap.com/xml.response"
@@ -71,6 +72,34 @@ class NamecheapConnector(RegistrarConnector):
             page += 1
         return domains
 
+    def _pricing_params(self) -> dict:
+        return {
+            "ApiUser": self.api_user,
+            "ApiKey": self.api_key,
+            "UserName": self.username,
+            "ClientIp": self.client_ip,
+            "Command": "namecheap.users.getPricing",
+            "ProductType": "DOMAIN",
+            "ActionName": "RENEW",
+        }
+
+    async def _fetch_pricing(self) -> str:
+        owns = self._client is None
+        client = self._client or httpx.AsyncClient()
+        try:
+            resp = await client.get(API_URL, params=self._pricing_params(), timeout=20.0)
+            resp.raise_for_status()
+            return resp.text
+        except httpx.HTTPError as exc:
+            raise ConnectorError(f"namecheap pricing request failed: {exc}") from exc
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def get_renewal_prices(self) -> dict[str, TldPrice]:
+        """Return the 1-year RENEW price per TLD (``users.getPricing``)."""
+        return _parse_pricing(await self._fetch_pricing())
+
 
 def _tag(name: str) -> str:
     return f"{{{_NS}}}{name}"
@@ -118,3 +147,57 @@ def _parse_page(xml_text: str) -> list[RegistrarDomain]:
             )
         )
     return out
+
+
+def _check_error(root: ET.Element) -> None:
+    if (root.get("Status") or "").upper() == "ERROR":
+        errors = root.find(_tag("Errors"))
+        msg = "unknown error"
+        if errors is not None and len(errors):
+            msg = (errors[0].text or "").strip() or msg
+        raise ConnectorError(f"namecheap API error: {msg}")
+
+
+def _price_amount(price_el: ET.Element) -> Decimal | None:
+    raw = price_el.get("YourPrice") or price_el.get("Price")
+    if not raw:
+        return None
+    try:
+        return Decimal(raw)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _parse_pricing(xml_text: str) -> dict[str, TldPrice]:
+    """Extract 1-year RENEW price per TLD from a ``users.getPricing`` response."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ConnectorError(f"namecheap: bad pricing XML ({exc})") from exc
+    _check_error(root)
+
+    prices: dict[str, TldPrice] = {}
+    for ptype in root.iter(_tag("ProductType")):
+        if (ptype.get("Name") or "").lower() != "domains":
+            continue
+        for category in ptype.findall(_tag("ProductCategory")):
+            if (category.get("Name") or "").lower() != "renew":
+                continue
+            for product in category.findall(_tag("Product")):
+                tld = (product.get("Name") or "").lower().lstrip(".")
+                if not tld:
+                    continue
+                for price_el in product.findall(_tag("Price")):
+                    if (
+                        price_el.get("Duration") != "1"
+                        or (price_el.get("DurationType") or "").upper() != "YEAR"
+                    ):
+                        continue
+                    amount = _price_amount(price_el)
+                    if amount is None:
+                        continue
+                    prices[tld] = TldPrice(
+                        tld=tld, price=amount, currency=price_el.get("Currency") or "USD"
+                    )
+                    break
+    return prices
