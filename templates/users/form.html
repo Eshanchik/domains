@@ -1,24 +1,24 @@
 {% extends "base.html" %}
 {% import "_components.html" as ui %}
-{% block title %}{{ "Изменить пользователя" if user else "Новый пользователь" }} — DomainGuard{% endblock %}
+{% block title %}{{ "Изменить пользователя" if subject else "Новый пользователь" }} — DomainGuard{% endblock %}
 {% block content %}
-{% set editing = user is not none %}
+{% set editing = subject is not none %}
 {{ ui.page_header("Изменить пользователя" if editing else "Новый пользователь") }}
 {{ ui.flash(error) }}
 
 <div class="card card-p max-w-lg">
-<form method="post" action="{{ '/users/' ~ user.id if editing else '/users' }}" class="space-y-4">
+<form method="post" action="{{ '/users/' ~ subject.id if editing else '/users' }}" class="space-y-4">
   <div>
     <label class="label" for="login">Логин</label>
     {% if editing %}
-      <input id="login" value="{{ user.login }}" disabled class="input" />
+      <input id="login" value="{{ subject.login }}" disabled class="input" />
     {% else %}
       <input id="login" name="login" required class="input" />
     {% endif %}
   </div>
   <div>
     <label class="label" for="email">Email</label>
-    <input id="email" name="email" type="email" required value="{{ user.email if editing else '' }}" class="input" />
+    <input id="email" name="email" type="email" required value="{{ subject.email if editing else '' }}" class="input" />
   </div>
   {% if not editing %}
   <div>
@@ -30,13 +30,13 @@
     <label class="label" for="role">Роль</label>
     <select id="role" name="role" class="select">
       {% for r in roles %}
-        <option value="{{ r.value }}" {{ "selected" if editing and user.role == r else "" }}>{{ r.value }}</option>
+        <option value="{{ r.value }}" {{ "selected" if editing and subject.role == r else "" }}>{{ r.value }}</option>
       {% endfor %}
     </select>
   </div>
   {% if editing %}
   <div class="flex items-center gap-2">
-    <input id="is_active" name="is_active" type="checkbox" class="checkbox" {{ "checked" if user.is_active else "" }} />
+    <input id="is_active" name="is_active" type="checkbox" class="checkbox" {{ "checked" if subject.is_active else "" }} />
     <label for="is_active" class="label mb-0">Активен</label>
   </div>
   {% endif %}
@@ -44,7 +44,7 @@
     <label class="label" for="scopes">
       Скоупы (по строке: <code>company:1</code> или <code>project:2</code>)
     </label>
-    <textarea id="scopes" name="scopes" rows="3" class="textarea input-mono">{% for s in (user.scopes if editing else []) %}{% if s.company_id %}company:{{ s.company_id }}
+    <textarea id="scopes" name="scopes" rows="3" class="textarea input-mono">{% for s in (subject.scopes if editing else []) %}{% if s.company_id %}company:{{ s.company_id }}
 {% endif %}{% if s.project_id %}project:{{ s.project_id }}
 {% endif %}{% endfor %}</textarea>
   </div>
@@ -57,7 +57,7 @@
 
 {% if editing %}
 <div class="card card-p max-w-lg mt-6">
-<form method="post" action="/users/{{ user.id }}/password" class="space-y-2">
+<form method="post" action="/users/{{ subject.id }}/password" class="space-y-2">
   <label class="label" for="newpass">Сбросить пароль (мин. 8)</label>
   <div class="flex gap-2">
     <input id="newpass" name="password" type="password" minlength="8" required class="input" />

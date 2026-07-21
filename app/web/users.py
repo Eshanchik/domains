@@ -42,21 +42,23 @@ def _parse_scopes(raw: str) -> list[ScopeIn]:
 async def list_users(
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _admin: User = Depends(admin_required),
+    admin: User = Depends(admin_required),
 ) -> HTMLResponse:
     users = await auth_service.list_users(session)
-    return templates.TemplateResponse(request, "users/list.html", {"users": users})
+    return templates.TemplateResponse(
+        request, "users/list.html", {"user": admin, "users": users}
+    )
 
 
 @router.get("/new", response_class=HTMLResponse)
 async def new_user_form(
     request: Request,
-    _admin: User = Depends(admin_required),
+    admin: User = Depends(admin_required),
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "users/form.html",
-        {"user": None, "roles": list(Role), "error": None},
+        {"user": admin, "subject": None, "roles": list(Role), "error": None},
     )
 
 
@@ -83,7 +85,7 @@ async def create_user(
         return templates.TemplateResponse(
             request,
             "users/form.html",
-            {"user": None, "roles": list(Role), "error": str(exc)},
+            {"user": admin, "subject": None, "roles": list(Role), "error": str(exc)},
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     await auth_service.create_user(session, data, actor_id=admin.id)
@@ -95,15 +97,15 @@ async def edit_user_form(
     request: Request,
     user_id: int,
     session: AsyncSession = Depends(get_session),
-    _admin: User = Depends(admin_required),
+    admin: User = Depends(admin_required),
 ) -> HTMLResponse:
-    user = await auth_service.get_user_by_id(session, user_id)
-    if user is None:
+    subject = await auth_service.get_user_by_id(session, user_id)
+    if subject is None:
         return RedirectResponse("/users", status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(
         request,
         "users/form.html",
-        {"user": user, "roles": list(Role), "error": None},
+        {"user": admin, "subject": subject, "roles": list(Role), "error": None},
     )
 
 

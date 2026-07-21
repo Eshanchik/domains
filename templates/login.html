@@ -1,28 +1,58 @@
 {% extends "base.html" %}
 {% block title %}Вход — DomainGuard{% endblock %}
 {% block content %}
-<div class="card card-p">
-  <h1 class="mb-1 text-lg font-semibold text-slate-900 dark:text-white">Вход</h1>
-  <p class="mb-4 text-sm muted">Введите свои учётные данные для доступа.</p>
-  {% if error %}
-    <div class="flash flash-error">{{ error }}</div>
-  {% endif %}
-  <form method="post" action="/login" class="space-y-4">
-    <div>
-      <label class="label" for="login">Логин</label>
-      <input id="login" name="login" required value="{{ login_value or '' }}" class="input" autofocus />
+<form method="post" action="/login" style="background:rgba(16,21,31,.86);box-shadow:0 0 44px rgba(0,0,0,.6)">
+  {# ── header frame ── #}
+  <div class="flex items-center gap-1.5 px-3 py-2 text-xs" style="color:var(--cyan)">
+    <span>╭─</span>
+    <span class="font-bold tracking-wide" style="color:var(--tx)">DOMAINGUARD // secure domain monitor</span>
+    <span class="flex-1 overflow-hidden whitespace-nowrap">────────────────────────────────────────────────────</span>
+    <span>╮</span>
+  </div>
+
+  <div class="px-6 py-4">
+    {# boot sequence (декоративно) #}
+    <div class="mb-5 text-xs leading-6" style="color:var(--dim)">
+      booting terminal........... <span style="color:var(--ok)">✔ OK</span><br />
+      loading rdap/whois module... <span style="color:var(--ok)">✔ OK</span><br />
+      ssl inspector.............. <span style="color:var(--ok)">✔ OK</span><br />
+      alert bus (tg/slack)....... <span style="color:var(--ok)">✔ OK</span>
     </div>
-    <div>
-      <label class="label" for="password">Пароль</label>
-      <input id="password" name="password" type="password" required class="input" />
-    </div>
-    {% if need_code %}
-    <div>
-      <label class="label" for="code">Код 2FA</label>
-      <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" autofocus class="input input-mono" />
-    </div>
+
+    {% if error %}
+      <div class="flash flash-error">{{ error }}</div>
     {% endif %}
-    <button type="submit" class="btn btn-primary w-full">Войти</button>
-  </form>
-</div>
+
+    {# prompt-style credential rows #}
+    <label class="mb-3 flex items-center gap-3">
+      <span style="color:var(--dim);width:88px">login:</span>
+      <input name="login" required value="{{ login_value or '' }}" autofocus
+             class="flex-1" style="background:transparent;border:none;outline:none;color:var(--acc);font:inherit;caret-color:var(--acc)" />
+    </label>
+    <label class="mb-3 flex items-center gap-3">
+      <span style="color:var(--dim);width:88px">password:</span>
+      <input name="password" type="password" required
+             class="flex-1" style="background:transparent;border:none;outline:none;color:var(--tx);font:inherit;letter-spacing:.15em;caret-color:var(--acc)" />
+    </label>
+    {% if need_code %}
+    <label class="mb-3 flex items-center gap-3">
+      <span style="color:var(--dim);width:88px">2fa code:</span>
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" autofocus placeholder="______"
+             class="flex-1" style="background:transparent;border:none;outline:none;color:var(--acc);font:inherit;caret-color:var(--acc)" />
+    </label>
+    {% endif %}
+
+    <div class="mt-5 flex items-center gap-4">
+      <button type="submit" class="btn btn-primary">Войти</button>
+      <span class="text-xs" style="color:var(--faint)">enter ↵ · matrix rain на фоне</span>
+    </div>
+  </div>
+
+  {# ── footer frame ── #}
+  <div class="flex px-3 py-2 text-xs" style="color:var(--cyan)">
+    <span>╰</span>
+    <span class="flex-1 overflow-hidden whitespace-nowrap">──────────────────────────────────────────────────────────────</span>
+    <span>╯</span>
+  </div>
+</form>
 {% endblock %}

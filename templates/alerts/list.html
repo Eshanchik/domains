@@ -2,27 +2,27 @@
 {% import "_components.html" as ui %}
 {% block title %}Алерты — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Активные алерты") }}
-<div class="card overflow-x-auto">
-  <table class="dg-table">
-    <thead>
-      <tr>
-        <th>Домен</th><th>Тип</th><th>Severity</th><th>Когда</th><th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for event, fqdn in rows %}
-      <tr class="cursor-pointer" onclick="location='/alerts/{{ event.id }}'">
-        <td class="font-mono"><a href="/alerts/{{ event.id }}" class="link">{{ fqdn }}</a></td>
-        <td>{{ event.kind }}</td>
-        <td>{{ ui.status_badge(event.severity) }}</td>
-        <td>{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td class="text-right"><a href="/alerts/{{ event.id }}" class="link">Детали →</a></td>
-      </tr>
-      {% else %}
-      {{ ui.empty_row(5, "Активных алертов нет.") }}
-      {% endfor %}
-    </tbody>
-  </table>
+{% set sev_glyph = {"high": "● HIGH", "medium": "◆ MED", "low": "· LOW"} %}
+{% set sev_color = {"high": "var(--mag)", "medium": "var(--amber)", "low": "var(--dim)"} %}
+<div class="mb-4 flex items-baseline gap-3">
+  <h1 class="page-title">АЛЕРТЫ</h1>
+  <span class="text-xs" style="color:var(--dim)">// event log</span>
+</div>
+
+<div style="background:var(--panel);padding:6px 0">
+  {% for event, fqdn in rows %}
+  <a href="/alerts/{{ event.id }}" onclick="location='/alerts/{{ event.id }}'"
+     class="dg-logrow"
+     style="display:flex;align-items:center;gap:12px;padding:6px 16px;cursor:pointer;text-decoration:none;{{ 'background:var(--panel-2)' if loop.index0 % 2 else 'background:transparent' }}">
+    <span style="width:78px;flex-shrink:0;color:{{ sev_color.get(event.severity, 'var(--dim)') }}">{{ sev_glyph.get(event.severity, event.severity) }}</span>
+    <span style="width:96px;flex-shrink:0;color:var(--dim)">{{ event.kind }}</span>
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--acc)">{{ fqdn }}</span>
+    <span style="flex-shrink:0;color:var(--dim)">{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</span>
+    <span style="width:100px;text-align:right;flex-shrink:0;color:var(--amber)">◆ ACTIVE</span>
+    <span style="margin-left:8px;color:var(--dim)">›</span>
+  </a>
+  {% else %}
+  <p class="px-4 py-6 text-center text-sm" style="color:var(--faint)">Активных алертов нет.</p>
+  {% endfor %}
 </div>
 {% endblock %}

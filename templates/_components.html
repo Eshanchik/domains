@@ -73,3 +73,17 @@
 {% macro empty_row(colspan, text="Нет данных.") %}
 <tr><td colspan="{{ colspan }}" class="td text-center text-slate-400 py-6">{{ text }}</td></tr>
 {% endmacro %}
+
+{# --- Box-drawing panel: ╭─ TITLE ─────[action]─╮ … ╰──────╯ (btop look).
+   Use with {% call %}. Optional inline header action (accent button link). --- #}
+{% macro panel(title, action_label=none, action_href=none) %}
+<div class="dgframe">
+  <div class="dgframe-h">
+    <span>╭─</span><span class="dgframe-t">{{ title }}</span>
+    {% if action_label %}<a href="{{ action_href }}" class="dgframe-btn">{{ action_label }}</a>{% endif %}
+    <span class="dgframe-line"></span><span>╮</span>
+  </div>
+  {{ caller() }}
+  <div class="dgframe-f"><span>╰</span><span class="dgframe-line"></span><span>╯</span></div>
+</div>
+{% endmacro %}

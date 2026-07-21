@@ -2,49 +2,54 @@
 {% import "_components.html" as ui %}
 {% block title %}Расходы — DomainGuard{% endblock %}
 {% block content %}
-{% call ui.page_header("Расходы за " ~ year ~ " год (USD)") %}
-  <form method="get" action="/costs" class="flex flex-wrap items-center gap-2 text-sm">
-    <select name="group_by" class="select w-auto">
-      {% for g, label in [("company","по компаниям"), ("project","по проектам"), ("registrar","по регистраторам")] %}
-        <option value="{{ g }}" {{ 'selected' if group_by==g else '' }}>{{ label }}</option>
-      {% endfor %}
-    </select>
-    <input name="year" type="number" value="{{ year }}" class="input w-24" />
-    <button type="submit" class="btn btn-secondary btn-sm">Показать</button>
-  </form>
-{% endcall %}
+<div class="mb-4 flex items-baseline gap-3">
+  <h1 class="page-title">Расходы</h1>
+  <span class="text-xs" style="color:var(--dim)">// продления &amp; прогноз</span>
+</div>
 
-<div class="card overflow-x-auto mb-6">
+<div class="mb-6">
+{% call ui.panel("Расходы за " ~ year ~ " (USD)") %}
+  <div style="border-bottom:1px solid var(--bd);padding:8px 14px">
+    <form method="get" action="/costs" class="flex flex-wrap items-center gap-2 text-sm">
+      <select name="group_by" class="select w-auto">
+        {% for g, label in [("company","по компаниям"), ("project","по проектам"), ("registrar","по регистраторам")] %}
+          <option value="{{ g }}" {{ 'selected' if group_by==g else '' }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <input name="year" type="number" value="{{ year }}" class="input w-24" />
+      <button type="submit" class="btn btn-secondary btn-sm">Показать</button>
+    </form>
+  </div>
   <table class="dg-table">
-    <thead><tr><th>Группа</th><th>Сумма, USD</th></tr></thead>
+    <thead><tr><th>Группа</th><th class="text-right">Сумма, USD</th></tr></thead>
     <tbody>
       {% for row in summary %}
-      <tr><td>{{ row.label }}</td><td>{{ '%.2f'|format(row.total_usd) }}</td></tr>
+      <tr><td>{{ row.label }}</td><td class="text-right">{{ '%.2f'|format(row.total_usd) }}</td></tr>
       {% else %}
       {{ ui.empty_row(2, "Нет платежей за период.") }}
       {% endfor %}
     </tbody>
     {% if summary %}
-    <tfoot><tr class="font-medium"><td>Итого</td><td>{{ '%.2f'|format(total) }}</td></tr></tfoot>
+    <tfoot><tr class="font-medium"><td>Итого</td><td class="text-right">{{ '%.2f'|format(total) }}</td></tr></tfoot>
     {% endif %}
   </table>
+{% endcall %}
 </div>
 
-<h2 class="section-title">Ближайшие продления (≤ 30 дней)</h2>
-<div class="card overflow-x-auto">
-  <table class="dg-table">
-    <thead><tr><th>Домен</th><th>Истекает</th><th>Цена</th></tr></thead>
-    <tbody>
-      {% for item in forecast %}
-      <tr>
-        <td class="font-mono">{{ item.fqdn }}</td>
-        <td>{{ item.expiry_date.strftime('%Y-%m-%d') }}</td>
-        <td>{{ '%.2f'|format(item.price) }} {{ item.currency }}</td>
-      </tr>
-      {% else %}
-      {{ ui.empty_row(3, "Нет предстоящих продлений с указанной ценой.") }}
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+{% call ui.panel("Ближайшие продления (≤ 30 дней)") %}
+<table class="dg-table">
+  <thead><tr><th>Домен</th><th>Истекает</th><th class="text-right">Цена</th></tr></thead>
+  <tbody>
+    {% for item in forecast %}
+    <tr>
+      <td class="font-mono">{{ item.fqdn }}</td>
+      <td>{{ item.expiry_date.strftime('%Y-%m-%d') }}</td>
+      <td class="text-right">{{ '%.2f'|format(item.price) }} {{ item.currency }}</td>
+    </tr>
+    {% else %}
+    {{ ui.empty_row(3, "Нет предстоящих продлений с указанной ценой.") }}
+    {% endfor %}
+  </tbody>
+</table>
+{% endcall %}
 {% endblock %}

@@ -196,7 +196,38 @@
         [data-theme-btn="amber"] { color: var(--dim); }
         :root:not([data-theme="amber"]) [data-theme-btn="green"] { color: var(--ok); }
         :root[data-theme="amber"] [data-theme-btn="amber"] { color: var(--amber); }
+
+        /* Box-drawing panel frame (╭─ TITLE ─────╮ … ╰──────╯) — btop look. */
+        /* min-width:0 lets the frame shrink inside grid/flex so the dashed line
+           clips instead of forcing the whole panel (and its grid column) wide. */
+        .dgframe { background: var(--panel); min-width: 0; }
+        .dgframe + .dgframe { margin-top: 14px; }
+        .dgframe-h { display:flex; align-items:center; gap:6px; padding:6px 12px; color:var(--cyan);
+          font-size:12px; min-width:0; }
+        .dgframe-t { color: var(--tx); font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+          white-space:nowrap; }
+        .dgframe-t .muted { text-transform:none; letter-spacing:0; }
+        .dgframe-line { flex:1; min-width:0; overflow:hidden; white-space:nowrap; color:var(--cyan); }
+        .dgframe-line::before { content:"────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"; }
+        .dgframe-f { display:flex; align-items:center; padding:6px 12px; color:var(--cyan); font-size:12px; }
+        .dgframe-btn { display:inline-flex; align-items:center; font-size:11px; font-weight:700;
+          text-transform:uppercase; letter-spacing:.06em; padding:2px 10px; background:var(--acc);
+          color:var(--bg); white-space:nowrap; }
+        .dgframe-btn::before { content:"[ "; }
+        .dgframe-btn::after { content:" ]"; }
+        .dgframe-btn:hover { filter: brightness(1.12); }
+
+        /* Dashboard stat grid with 1px gridline gaps. */
+        .statgrid { display:grid; grid-template-columns:repeat(2,1fr); gap:1px; background:var(--bd);
+          border:1px solid var(--bd); }
+        .statcell { background:var(--panel); padding:12px 16px; display:block; }
+        .statcell:hover { background:var(--panel-2); }
+        .statcell-l { color:var(--dim); font-size:10px; letter-spacing:.1em; text-transform:uppercase; }
+        .statcell-v { font-size:26px; font-weight:700; line-height:1.25; color:var(--acc); }
+        .statcell-v.danger { color:var(--mag); }
       }
+      @media (min-width: 640px) { .statgrid { grid-template-columns: repeat(3, 1fr); } }
+      @media (min-width: 1024px) { .statgrid.cols4 { grid-template-columns: repeat(4, 1fr); } }
       .dg-caret { display:inline-block; width:.5em; height:1.05em; background: var(--acc);
         vertical-align: text-bottom; animation: dg-blink 1.05s step-end infinite; }
     </style>
@@ -284,20 +315,12 @@
         }
       </script>
     {% else %}
-      {# Unauthenticated shell (login): matrix rain behind a rounded terminal box. #}
+      {# Unauthenticated shell (login): matrix rain behind the login box (login.html
+         draws its own full ╭─ … ─╮ terminal frame). #}
       <div class="relative flex min-h-full flex-col items-center justify-center px-4 py-12" style="overflow:hidden">
         <canvas id="dg-matrix" class="pointer-events-none absolute inset-0 h-full w-full" style="opacity:.4;z-index:0"></canvas>
-        <div class="relative w-full max-w-md" style="z-index:1">
-          <div class="mb-1 flex items-center gap-1.5 px-1 text-xs" style="color:var(--cyan)">
-            <span>╭─</span>
-            <span class="font-bold tracking-wider" style="color:var(--tx)">DOMAINGUARD</span>
-            <span class="flex-1 overflow-hidden whitespace-nowrap">──────────────────────</span>
-            <span>╮</span>
-          </div>
+        <div class="relative w-full" style="max-width:580px;z-index:1">
           {{ self.content() }}
-          <div class="mt-1 flex px-1 text-xs" style="color:var(--cyan)">
-            <span>╰</span><span class="flex-1 overflow-hidden whitespace-nowrap">──────────────────────────────</span><span>╯</span>
-          </div>
         </div>
       </div>
       <script>

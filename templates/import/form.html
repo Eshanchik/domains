@@ -2,10 +2,14 @@
 {% import "_components.html" as ui %}
 {% block title %}Импорт доменов — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Импорт доменов") }}
+<div class="mb-4 flex items-baseline gap-3">
+  <h1 class="page-title">Импорт</h1>
+  <span class="text-xs" style="color:var(--dim)">// paste &amp; run · предпросмотр diff</span>
+</div>
 
-<div class="card card-p max-w-2xl">
-<form method="post" action="/import" enctype="multipart/form-data" class="space-y-4">
+<div class="max-w-2xl">
+{% call ui.panel("STDIN") %}
+<form method="post" action="/import" enctype="multipart/form-data" class="space-y-4" style="padding:14px 16px">
   <input type="hidden" name="commit" value="false" />
   <div>
     <label class="label" for="default_project_id">Проект по умолчанию</label>
@@ -33,5 +37,6 @@
 
   <button type="submit" class="btn btn-primary">Предпросмотр</button>
 </form>
+{% endcall %}
 </div>
 {% endblock %}
