@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 
 class ConnectorError(Exception):
@@ -18,6 +19,15 @@ class RegistrarDomain:
     fqdn: str
     expiry_date: datetime | None = None
     auto_renew: bool | None = None
+
+
+@dataclass
+class TldPrice:
+    """Renewal price for one TLD (1-year), as reported by a registrar."""
+
+    tld: str
+    price: Decimal
+    currency: str = "USD"
 
 
 class RegistrarConnector(ABC):
