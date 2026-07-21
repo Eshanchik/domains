@@ -71,6 +71,48 @@
   </div>
 </div>
 
+{# Явный статус всех проверок + VirusTotal (T51) #}
+<div class="mb-6">
+{% call ui.panel("Проверки") %}
+  {%- macro checkrow(label, cr) -%}
+  <div class="flex items-center gap-3" style="padding:8px 16px;border-top:1px solid var(--bd)">
+    <span style="width:130px;color:var(--dim)">{{ label }}</span>
+    <span style="flex:1">{% if cr %}{{ ui.status_badge(cr.status) }}{% else %}<span class="muted">не проверялся</span>{% endif %}</span>
+    <span class="text-xs muted">{{ cr.checked_at.strftime('%Y-%m-%d %H:%M') if cr else '—' }}</span>
+  </div>
+  {%- endmacro -%}
+  <div style="font-size:14px">
+    {{ checkrow("RDAP / WHOIS", checks_status.get('rdap')) }}
+    {{ checkrow("SSL", checks_status.get('ssl')) }}
+    {# VirusTotal — явная строка #}
+    <div class="flex items-center gap-3" style="padding:8px 16px;border-top:1px solid var(--bd)">
+      <span style="width:130px;color:var(--dim)">VirusTotal</span>
+      <span style="flex:1">
+        {% if vt %}
+          {%- set vt_total = vt.harmless + vt.malicious + vt.suspicious + vt.undetected -%}
+          {% if vt.malicious > 0 %}<span style="color:var(--mag)">● {{ vt.malicious }}/{{ vt_total }} детектов</span>
+          {% elif vt.suspicious > 0 %}<span style="color:var(--amber)">◆ подозрительно ({{ vt.suspicious }}/{{ vt_total }})</span>
+          {% else %}<span style="color:var(--ok)">✔ чисто ({{ vt.harmless }}/{{ vt_total }})</span>{% endif %}
+        {% else %}<span class="muted">не проверялся</span>{% endif %}
+      </span>
+      <span class="text-xs muted">{{ vt.checked_at.strftime('%Y-%m-%d %H:%M') if vt else '—' }}</span>
+    </div>
+    {{ checkrow("DNS / NS", checks_status.get('dns')) }}
+    {# Health-check rollup #}
+    <div class="flex items-center gap-3" style="padding:8px 16px;border-top:1px solid var(--bd)">
+      <span style="width:130px;color:var(--dim)">Health-check</span>
+      <span style="flex:1">
+        {% if health_roll == 'up' %}{{ ui.badge("up", "green") }}
+        {% elif health_roll == 'down' %}{{ ui.badge("down", "red") }}
+        {% elif health_roll == 'unknown' %}{{ ui.badge("unknown", "gray") }}
+        {% else %}<span class="muted">не настроен</span>{% endif %}
+      </span>
+      <span class="text-xs muted"></span>
+    </div>
+  </div>
+{% endcall %}
+</div>
+
 {# Health-checks (кастомная доступность) #}
 <div class="mb-6">
 {% call ui.panel("Health-checks") %}

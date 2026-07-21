@@ -317,6 +317,28 @@ async def domain_card(
         .scalars()
         .all()
     )
+    # Latest check per type (recent_checks is newest-first) + latest VT result, for
+    # the explicit "checks" panel on the card (T51).
+    from app.models.vt_result import VtResult
+
+    checks_status: dict = {}
+    for c in recent_checks:
+        checks_status.setdefault(c.type, c)
+    vt = (
+        await session.execute(
+            select(VtResult)
+            .where(VtResult.domain_id == domain_id)
+            .order_by(VtResult.checked_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    hc_states = {h.state for h in healthchecks}
+    if "down" in hc_states:
+        health_roll = "down"
+    elif hc_states and hc_states <= {"up", "unknown"}:
+        health_roll = "up" if "up" in hc_states else "unknown"
+    else:
+        health_roll = None  # no health-checks configured
     alerts = list(
         (
             await session.execute(
@@ -340,6 +362,9 @@ async def domain_card(
             "project": project,
             "healthchecks": healthchecks,
             "recent_checks": recent_checks,
+            "checks_status": checks_status,
+            "vt": vt,
+            "health_roll": health_roll,
             "alerts": alerts,
             "payments": payments,
             "today": datetime.now(UTC).date(),

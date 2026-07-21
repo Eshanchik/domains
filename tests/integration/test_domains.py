@@ -399,3 +399,28 @@ def test_archived_checkbox_is_terminal_styled(client, make_user, make_company) -
     assert page.status_code == 200
     # Terminal [x]/[ ] toggle, not the raw native .checkbox class.
     assert 'class="term-check"' in page.text
+
+
+def test_domain_card_checks_panel_and_vt(
+    client, make_user, make_company, make_project, make_domain
+):
+    from app.models.vt_result import VtResult
+
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    did = make_domain(proj, fqdn="vtcard.com")
+
+    async def seed_vt():
+        async with SessionLocal() as s:
+            s.add(VtResult(domain_id=did, harmless=80, malicious=0, suspicious=0, undetected=9))
+            await s.commit()
+
+    _run(seed_vt())
+    _admin(client, make_user)
+
+    page = client.get(f"/domains/{did}")
+    assert page.status_code == 200
+    assert "Проверки" in page.text  # the checks panel
+    assert "VirusTotal" in page.text
+    assert "чисто" in page.text and "80/89" in page.text  # 80 harmless of 89 engines, 0 malicious
+    assert "не проверялся" in page.text  # RDAP has no result yet
