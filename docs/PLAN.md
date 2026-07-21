@@ -749,6 +749,32 @@
   колонку/поле проекта (join domain→project→company) и возраст.
   - DoD: тест (проект отображается, возраст считается корректно); вживую.
 
+## Фаза 7 — OAuth-доступ к MCP
+
+- [x] **T45. Права на MCP у пользователя (админка).** _(2026-07-21)_
+  Колонка `User.mcp_allowed` (bool, default false; миграция `c309a4097dc4` со
+  `server_default false` + снятие дефолта, up/down проверены). Хелпер
+  `auth.user_may_use_mcp(user)` = `role==admin or mcp_allowed` (**админы — всегда**).
+  Чекбокс «Разрешён MCP» на форме пользователя (create+edit), колонка «MCP» в списке.
+  Схемы `UserCreate/UserUpdate` + роуты (`mcp_allowed` из формы) + аудит diff.
+  Тесты (unit helper: админ всегда / флаг гейтит не-админа; integration: create с
+  флагом → true, edit без чекбокса → false). Основа для T46.
+
+- [ ] **T46. OAuth-сервер для MCP (claude.ai custom connector).**
+  `/mcp` становится OAuth-защищённым: в claude.ai вписываешь только URL → редирект
+  на наш сервис → логин + экран согласия (проверка `user_may_use_mcp`) →
+  «Разрешить/Отклонить» → Claude получает токен. Реализация: провайдер
+  `OAuthAuthorizationServerProvider` (клиенты через DCR, коды/токены в Redis),
+  `AuthSettings`/`auth_server_provider` у FastMCP (mounts metadata/authorize/token/
+  register/revoke), экран согласия на нашем UI (сессия+флаг), `load_access_token`
+  принимает **и** OAuth-токены, **и** существующие API-токены (`dg_…`) — оба способа
+  (реш. пользователя). nginx: проброс `/.well-known/oauth-*`, `/authorize`, `/token`,
+  `/register`, `/revoke` на mcp-контейнер. Токен привязан к юзеру → роль/скоуп/аудит
+  как сейчас.
+  - DoD: metadata-discovery отдаётся; DCR регистрирует клиента; неавторизованный →
+    login; юзер без права → отказ на согласии; выданный токен работает на `/mcp`;
+    API-токен по-прежнему работает; тесты; вживую подключение из claude.ai.
+
 ## Backlog / находки
 
 - Точная глубина очередей Dramatiq и латентность проверок в `/metrics` — требуют

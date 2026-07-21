@@ -130,3 +130,36 @@ def test_admin_creates_user_and_writes_audit(client, make_user, make_company, ma
     assert user.role == Role.manager
     assert len(user.scopes) == 2
     assert audit_count >= 1
+
+
+def test_admin_toggles_mcp_allowed(client, make_user) -> None:
+    make_user(login="root", password="password123", role=Role.admin)
+    client.post("/login", data={"login": "root", "password": "password123"})
+
+    # Create a viewer with MCP explicitly enabled.
+    client.post(
+        "/users",
+        data={
+            "email": "mcpuser@example.com",
+            "login": "mcpuser",
+            "password": "password123",
+            "role": "viewer",
+            "mcp_allowed": "on",
+        },
+        follow_redirects=False,
+    )
+
+    async def _get() -> User:
+        async with SessionLocal() as s:
+            return (await s.execute(select(User).where(User.login == "mcpuser"))).scalar_one()
+
+    created = _run(_get())
+    assert created.mcp_allowed is True
+
+    # Editing without the checkbox turns it off.
+    client.post(
+        f"/users/{created.id}",
+        data={"email": "mcpuser@example.com", "role": "viewer", "is_active": "on"},
+        follow_redirects=False,
+    )
+    assert _run(_get()).mcp_allowed is False

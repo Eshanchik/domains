@@ -136,6 +136,11 @@ async def _apply_scopes(session: AsyncSession, user: User, scopes: list[ScopeIn]
     user.scopes = result
 
 
+def user_may_use_mcp(user: User) -> bool:
+    """Admins may always use MCP; others need the explicit ``mcp_allowed`` flag."""
+    return user.role == Role.admin or user.mcp_allowed
+
+
 async def create_user(session: AsyncSession, data: UserCreate, *, actor_id: int | None) -> User:
     user = User(
         email=data.email,
@@ -143,6 +148,7 @@ async def create_user(session: AsyncSession, data: UserCreate, *, actor_id: int 
         password_hash=hash_password(data.password),
         role=data.role,
         is_active=True,
+        mcp_allowed=data.mcp_allowed,
     )
     await _apply_scopes(session, user, data.scopes)
     session.add(user)
@@ -173,6 +179,9 @@ async def update_user(
     if data.is_active is not None and data.is_active != user.is_active:
         diff["is_active"] = {"old": user.is_active, "new": data.is_active}
         user.is_active = data.is_active
+    if data.mcp_allowed is not None and data.mcp_allowed != user.mcp_allowed:
+        diff["mcp_allowed"] = {"old": user.mcp_allowed, "new": data.mcp_allowed}
+        user.mcp_allowed = data.mcp_allowed
     if data.scopes is not None:
         await _apply_scopes(session, user, data.scopes)
         diff["scopes"] = [s.model_dump() for s in data.scopes]
