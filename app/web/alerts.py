@@ -17,6 +17,7 @@ from app.models.company import Company, Project
 from app.models.domain import Domain
 from app.models.user import Role, User
 from app.services import alerts as alerts_svc
+from app.services import companies as companies_svc
 from app.services import domains as domains_svc
 from app.services import notifications as notif
 from app.templating import templates
@@ -38,12 +39,33 @@ def format_age(delta: timedelta) -> str:
     return f"{minutes}м"
 
 
+def _int_or_none(value: str | None) -> int | None:
+    if value is None or value.strip() == "":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+ALERT_KINDS = ["expiry", "ssl", "vt_malicious", "health_down", "ns_change"]
+ALERT_SEVERITIES = ["high", "medium", "low"]
+
+
 @router.get("/alerts", response_class=HTMLResponse)
 async def alerts_list(
     request: Request,
+    company_id: str | None = None,
+    project_id: str | None = None,
+    severity: str | None = None,
+    kind: str | None = None,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_user),
 ) -> HTMLResponse:
+    company_id = _int_or_none(company_id)
+    project_id = _int_or_none(project_id)
+    severity = severity or None
+    kind = kind or None
     allowed = await domains_svc.allowed_project_ids(session, user)
     stmt = (
         select(AlertEvent, Domain.fqdn, Project.name, Company.name)
@@ -59,6 +81,14 @@ async def alerts_list(
             if allowed
             else stmt.where(Domain.id.is_(None))
         )
+    if company_id is not None:
+        stmt = stmt.where(Company.id == company_id)
+    if project_id is not None:
+        stmt = stmt.where(Project.id == project_id)
+    if severity in ALERT_SEVERITIES:
+        stmt = stmt.where(AlertEvent.severity == severity)
+    if kind in ALERT_KINDS:
+        stmt = stmt.where(AlertEvent.kind == kind)
     raw = (await session.execute(stmt)).all()
     now = datetime.now(UTC)
     rows = [
@@ -71,7 +101,24 @@ async def alerts_list(
         }
         for event, fqdn, project, company in raw
     ]
-    return templates.TemplateResponse(request, "alerts/list.html", {"user": user, "rows": rows})
+    return templates.TemplateResponse(
+        request,
+        "alerts/list.html",
+        {
+            "user": user,
+            "rows": rows,
+            "companies": await companies_svc.list_companies(session, user),
+            "projects": await companies_svc.list_projects(session, user),
+            "kinds": ALERT_KINDS,
+            "severities": ALERT_SEVERITIES,
+            "f": {
+                "company_id": company_id,
+                "project_id": project_id,
+                "severity": severity,
+                "kind": kind,
+            },
+        },
+    )
 
 
 async def _load_alert_in_scope(
