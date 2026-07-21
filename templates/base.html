@@ -125,14 +125,32 @@
         /* Form controls */
         .label { display:block; margin-bottom: 4px; font-size: 11px; text-transform: uppercase;
           letter-spacing: .06em; color: var(--dim); }
+        /* Terminal form fields — inset panel, dim frame, accent-glow focus,
+           and a monospace caret. Selects get a custom cyan ▾ chevron. */
         .input, .select, .textarea { width:100%; border-radius: 0; border: 1px solid var(--bd);
-          background: var(--bg); padding: 7px 10px; font-size: 13px; color: var(--tx);
-          caret-color: var(--acc); }
+          background: var(--panel-2); padding: 7px 10px; font-size: 13px; color: var(--tx);
+          caret-color: var(--acc); font-family: inherit;
+          transition: border-color .12s, box-shadow .12s, background .12s; }
+        .input:hover, .select:hover, .textarea:hover { border-color: var(--dim); }
         .input::placeholder, .textarea::placeholder { color: var(--faint); }
         .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--acc);
-          box-shadow: 0 0 0 1px var(--acc); }
-        .input:disabled { color: var(--dim); background: var(--panel); }
+          background: var(--bg); box-shadow: inset 0 0 0 1px var(--acc), 0 0 9px -3px var(--acc); }
+        .input:disabled, .select:disabled { color: var(--dim); background: var(--panel);
+          border-color: var(--bd); cursor: not-allowed; }
         .input-mono { font-family: inherit; }
+        .select { appearance: none; -webkit-appearance: none; padding-right: 28px;
+          background-image:
+            linear-gradient(45deg, transparent 50%, var(--cyan) 50%),
+            linear-gradient(135deg, var(--cyan) 50%, transparent 50%);
+          background-position: right 13px center, right 8px center;
+          background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+        .select:focus { background-image:
+            linear-gradient(45deg, transparent 50%, var(--acc) 50%),
+            linear-gradient(135deg, var(--acc) 50%, transparent 50%);
+          background-position: right 13px center, right 8px center;
+          background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+        /* Labels read like CLI flags: "> LABEL". */
+        .label::before { content: "> "; color: var(--faint); }
         /* Terminal checkbox: dark square with a green check, matches the skin. */
         .checkbox { appearance: none; -webkit-appearance: none; width: 15px; height: 15px;
           border: 1px solid var(--bd); background: var(--bg); cursor: pointer; position: relative;
