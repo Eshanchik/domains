@@ -581,7 +581,24 @@
     не перетирает ручную; идемпотентность; миграция при изменении моделей через
     Alembic; SPEC обновлён (поле источника цены, требование IP whitelist).
 
-- [ ] **T37. Вход через Google (OAuth) — только для существующих пользователей.**
+- [x] **T37. Вход через Google (OAuth) — только для существующих пользователей.** _(2026-07-21)_
+  Кнопка «войти через Google» на `/login` (терминальный стиль, под «или»); OAuth2
+  code-flow реализован вручную на httpx (без новой зависимости, сетевой шов
+  `exchange_code` мокается). `services/google_oauth.py` (authorize-URL + обмен кода
+  → verified email) + `web/oauth.py`: `/auth/google/login` (state-cookie CSRF →
+  redirect на Google), `/auth/google/callback` (сверка state, обмен кода, поиск
+  **активного** юзера по verified email — иначе отказ, никакой саморегистрации;
+  роли/скоупы из БД), `/auth/google/2fa` (если у юзера включён TOTP — pending-токен
+  в Redis + форма кода, **2FA обязателен и после Google** — выбор пользователя).
+  Конфиг `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI` из env (secret `repr=False`, не
+  логируется; пусто → фича спит, кнопка скрыта, роуты редиректят). Проброшены в
+  docker-compose (x-app-env) → работают и на проде когда заданы. Тесты 220 (+17:
+  обмен кода respx — успех/5xx/нет email/нет токена; enable/disable кнопки; redirect
+  на Google; существующий юзер входит; email case-insensitive; неизвестный/
+  неактивный/неверифицированный/CSRF-mismatch → отказ; 2FA-поток: код обязателен,
+  неверный→401, верный→сессия). Проверено вживую (кнопка на входе). SPEC AUTH-2.
+  **Без миграции** (используется `User.email`). Дремлет на проде до задания
+  `GOOGLE_*` (как VT/TG/Namecheap).
   Кнопка «Войти через Google» на `/login`; OAuth2 authorization-code flow
   (authlib). После колбэка ищем пользователя по verified email из Google-профиля:
   найден и активен → логиним (роли/скоупы из нашей БД); не найден/неактивен →
