@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.deps import require_role, require_user
+from app.deps import redis_dep, require_role, require_user
 from app.models.alert import AlertEvent
 from app.models.check_result import CheckResult
 from app.models.company import Company, Project
@@ -18,6 +18,7 @@ from app.models.domain import Domain
 from app.models.user import Role, User
 from app.services import alerts as alerts_svc
 from app.services import domains as domains_svc
+from app.services import notifications as notif
 from app.templating import templates
 
 router = APIRouter(tags=["web-alerts"])
@@ -93,6 +94,7 @@ async def _load_alert_in_scope(
 async def alert_detail(
     request: Request,
     alert_id: int,
+    notified: str | None = None,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_user),
 ) -> HTMLResponse:
@@ -115,7 +117,13 @@ async def alert_detail(
     return templates.TemplateResponse(
         request,
         "alerts/detail.html",
-        {"user": user, "event": event, "domain": domain, "recent_checks": recent_checks},
+        {
+            "user": user,
+            "event": event,
+            "domain": domain,
+            "recent_checks": recent_checks,
+            "notified": notified,
+        },
     )
 
 
@@ -129,3 +137,24 @@ async def alert_resolve(
     if found is not None:
         await alerts_svc.resolve_event(session, alert_id)
     return RedirectResponse(f"/alerts/{alert_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/alerts/{alert_id}/notify")
+async def alert_notify(
+    alert_id: int,
+    session: AsyncSession = Depends(get_session),
+    redis=Depends(redis_dep),
+    user: User = Depends(manager_required),
+):
+    """Re-send this alert to the domain's resolved notification channels (Manager+)."""
+    found = await _load_alert_in_scope(session, user, alert_id)
+    sent = 0
+    if found is not None:
+        event, domain = found
+        text = alerts_svc.build_message(event, domain)
+        for channel in await notif.resolve_channels(session, domain, purpose="instant"):
+            if await notif.send_to_channel(session, redis, channel, text):
+                sent += 1
+    return RedirectResponse(
+        f"/alerts/{alert_id}?notified={sent}", status_code=status.HTTP_303_SEE_OTHER
+    )
