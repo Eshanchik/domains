@@ -336,3 +336,43 @@ def test_filter_empty_int_params_do_not_500(
     csv_resp = client.get("/domains/export.csv?company_id=&project_id=&expiring=")
     assert csv_resp.status_code == 200
     assert "has-domain.com" in csv_resp.text
+
+
+# --- T34: sort/pagination links preserve active filters -----------------------
+
+
+def test_sort_links_preserve_active_filters(
+    client, make_user, make_company, make_project, make_domain
+) -> None:
+    acme = make_company(code="acme")
+    other = make_company(code="other")
+    acme_proj = make_project(acme, code="web")
+    other_proj = make_project(other, code="web")
+    make_domain(acme_proj, fqdn="acme-one.com")
+    make_domain(other_proj, fqdn="other-one.com")
+    _admin(client, make_user)
+
+    # Filtered by company: sort-header links must carry company_id, not drop it.
+    page = client.get(f"/domains?company_id={acme}")
+    assert page.status_code == 200
+    assert "acme-one.com" in page.text
+    assert "other-one.com" not in page.text
+    # Sort links exist and carry the active filter (appended via escaped expr → &amp;).
+    assert "sort=fqdn&dir=desc" in page.text
+    assert "sort=expiry_date&dir=asc" in page.text
+    assert f"&amp;company_id={acme}" in page.text
+
+    # Following the sort link keeps the filter applied (still only acme's domain).
+    sorted_page = client.get(f"/domains?sort=fqdn&dir=desc&company_id={acme}")
+    assert sorted_page.status_code == 200
+    assert "acme-one.com" in sorted_page.text
+    assert "other-one.com" not in sorted_page.text
+
+
+def test_archived_checkbox_is_terminal_styled(client, make_user, make_company) -> None:
+    make_company(code="acme")
+    _admin(client, make_user)
+    page = client.get("/domains")
+    assert page.status_code == 200
+    # Terminal [x]/[ ] toggle, not the raw native .checkbox class.
+    assert 'class="term-check"' in page.text

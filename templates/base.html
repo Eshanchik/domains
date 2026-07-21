@@ -134,6 +134,14 @@
         .input:disabled { color: var(--dim); background: var(--panel); }
         .input-mono { font-family: inherit; }
         .checkbox { width: 14px; height: 14px; accent-color: var(--acc); }
+        /* Terminal-style checkbox: renders [ ] / [x] instead of native box. */
+        .term-check { display:inline-flex; align-items:center; gap:6px; color: var(--dim);
+          cursor:pointer; user-select:none; padding: 0 4px; }
+        .term-check input { position:absolute; opacity:0; width:0; height:0; }
+        .term-check .box::before { content:"[ ]"; color: var(--dim); }
+        .term-check input:checked ~ .box::before { content:"[x]"; color: var(--acc); }
+        .term-check:hover .box::before { color: var(--acc); }
+        .term-check:focus-within .box::before { color: var(--acc); }
 
         /* Badges — btop glyph tokens. */
         .badge { display:inline-flex; align-items:center; font-size: 12px; font-weight: 500;
