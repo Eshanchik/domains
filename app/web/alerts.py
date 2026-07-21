@@ -198,7 +198,8 @@ async def alert_notify(
     sent = 0
     if found is not None:
         event, domain = found
-        text = alerts_svc.build_message(event, domain)
+        project, company = await alerts_svc.domain_location(session, domain)
+        text = alerts_svc.build_message(event, domain, project=project, company=company)
         for channel in await notif.resolve_channels(session, domain, purpose="instant"):
             if await notif.send_to_channel(session, redis, channel, text):
                 sent += 1

@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.alert import AlertEvent
+from app.models.company import Company, Project
 from app.models.domain import Domain
 from app.models.ssl_certificate import SslCertificate
 from app.models.vt_result import VtResult
@@ -238,23 +239,54 @@ async def evaluate_health(
 # --- Message templates (RU) --------------------------------------------------
 
 
-def build_message(event: AlertEvent, domain: Domain) -> str:
+_SEV_LABEL = {"high": "🔴 HIGH", "medium": "🟠 MED", "low": "⚪ LOW"}
+
+
+def build_message(
+    event: AlertEvent,
+    domain: Domain,
+    *,
+    project: str | None = None,
+    company: str | None = None,
+) -> str:
+    """A clear, multi-line alert message that renders in Telegram/Discord/webhook.
+
+    Plain text + emoji (no markdown dialect) so it looks the same in every channel.
+    """
     p = event.payload_json or {}
     days = p.get("days")
+    threshold = p.get("threshold")
     fqdn = domain.fqdn
+    sev = _SEV_LABEL.get(event.severity, event.severity.upper())
+    loc = f"\n📁 {project} · {company}" if project else ""
+
     if event.kind == "expiry":
-        return f"⚠️ Домен {fqdn} истекает через {days} дн. (порог {p.get('threshold')})."
+        date = domain.expiry_date.strftime("%Y-%m-%d") if domain.expiry_date else "—"
+        return (
+            f"{sev} · истекает домен\n"
+            f"🌐 {fqdn}\n"
+            f"⏳ через {days} дн. — {date}  (порог ≤{threshold} дн.){loc}"
+        )
     if event.kind == "ssl":
-        return f"🔒 SSL {fqdn} истекает через {days} дн. (порог {p.get('threshold')})."
+        return (
+            f"{sev} · истекает SSL-сертификат\n"
+            f"🔒 {fqdn}\n"
+            f"⏳ через {days} дн.  (порог ≤{threshold} дн.){loc}"
+        )
     if event.kind == "vt_malicious":
-        return f"🚨 VirusTotal: {fqdn} — вредоносный ({p.get('malicious')} детектов)."
+        return (
+            f"{sev} · VirusTotal\n"
+            f"🚨 {fqdn} помечен как вредоносный — детектов: {p.get('malicious')}{loc}"
+        )
     if event.kind == "health_down":
-        return f"🔴 Health-check {fqdn} недоступен (check #{p.get('healthcheck_id')})."
+        return (
+            f"{sev} · health-check недоступен\n🔴 {fqdn}  (check #{p.get('healthcheck_id')}){loc}"
+        )
     if event.kind == "ns_change":
-        new_ns = ", ".join(p.get("new_ns") or [])
-        old_ns = ", ".join(p.get("old_ns") or [])
-        return f"🛡️ Сменились NS домена {fqdn}: {new_ns} (было: {old_ns})."
-    return f"Событие по домену {fqdn}: {event.kind}"
+        new_ns = ", ".join(p.get("new_ns") or []) or "—"
+        old_ns = ", ".join(p.get("old_ns") or []) or "—"
+        return f"{sev} · сменились NS\n🛡️ {fqdn}\nбыло:  {old_ns}\nстало: {new_ns}{loc}"
+    return f"{sev} · {event.kind}\n🌐 {fqdn}{loc}"
 
 
 async def dispatch_instant(
@@ -277,13 +309,26 @@ async def dispatch_instant(
 
         send = lambda cid, text, eid: send_notification.send(cid, text, eid)  # noqa: E731
 
+    project, company = await domain_location(session, domain)
     count = 0
     for event in high:
-        text = build_message(event, domain)
+        text = build_message(event, domain, project=project, company=company)
         for channel in channels:
             send(channel.id, text, event.id)
             count += 1
     return count
+
+
+async def domain_location(session: AsyncSession, domain: Domain) -> tuple[str | None, str | None]:
+    """Return (project_name, company_name) for a domain, for alert context."""
+    row = (
+        await session.execute(
+            select(Project.name, Company.name)
+            .join(Company, Company.id == Project.company_id)
+            .where(Project.id == domain.project_id)
+        )
+    ).first()
+    return (row[0], row[1]) if row else (None, None)
 
 
 async def _latest_ssl_valid_to(session: AsyncSession, domain_id: int) -> datetime | None:
