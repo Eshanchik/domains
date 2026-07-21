@@ -9,6 +9,29 @@
   <span class="text-xs" style="color:var(--dim)">// event log · {{ rows | length }} active</span>
 </div>
 
+{# filters (auto-submit on change) #}
+<form method="get" action="/alerts" class="mb-3 flex flex-wrap items-end gap-2 text-sm">
+  <select name="company_id" class="select w-auto" onchange="this.form.requestSubmit()">
+    <option value="">Все компании</option>
+    {% for c in companies %}<option value="{{ c.id }}" {{ 'selected' if f.company_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <select name="project_id" class="select w-auto" onchange="this.form.requestSubmit()">
+    <option value="">Все проекты</option>
+    {% for p in projects %}<option value="{{ p.id }}" {{ 'selected' if f.project_id == p.id else '' }}>{{ p.name }}</option>{% endfor %}
+  </select>
+  <select name="severity" class="select w-auto" onchange="this.form.requestSubmit()">
+    <option value="">Любая severity</option>
+    {% for s in severities %}<option value="{{ s }}" {{ 'selected' if f.severity == s else '' }}>{{ s }}</option>{% endfor %}
+  </select>
+  <select name="kind" class="select w-auto" onchange="this.form.requestSubmit()">
+    <option value="">Любой тип</option>
+    {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if f.kind == k else '' }}>{{ k }}</option>{% endfor %}
+  </select>
+  {% if f.company_id or f.project_id or f.severity or f.kind %}
+  <a href="/alerts" class="btn btn-secondary btn-sm">Сбросить</a>
+  {% endif %}
+</form>
+
 <div style="background:var(--panel);padding:6px 0">
   {# column header #}
   {% if rows %}

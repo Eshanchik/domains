@@ -122,3 +122,33 @@ def test_alert_resolve_manager_only(
     resp = client.post(f"/alerts/{eid}/resolve", follow_redirects=False)
     assert resp.status_code == 303
     assert _event_state(eid) == "resolved"
+
+
+def test_alert_list_filters(client, make_user, make_company, make_project, make_domain):
+    acme = make_company(code="acme")
+    other = make_company(code="other")
+    pa = make_project(acme, code="web")
+    po = make_project(other, code="web")
+    da = make_domain(pa, fqdn="a-ssl.com")
+    da2 = make_domain(pa, fqdn="a-exp.com")
+    do = make_domain(po, fqdn="o-ssl.com")
+    _make_event(da, kind="ssl", severity="high")
+    _make_event(da2, kind="expiry", severity="medium")
+    _make_event(do, kind="ssl", severity="high")
+    make_user(login="root", password="password123", role=Role.admin)
+    _login(client, "root", "password123")
+
+    # by company
+    r = client.get(f"/alerts?company_id={acme}")
+    assert "a-ssl.com" in r.text and "a-exp.com" in r.text and "o-ssl.com" not in r.text
+    # by kind
+    r = client.get("/alerts?kind=ssl")
+    assert "a-ssl.com" in r.text and "o-ssl.com" in r.text and "a-exp.com" not in r.text
+    # by severity
+    r = client.get("/alerts?severity=medium")
+    assert "a-exp.com" in r.text and "a-ssl.com" not in r.text
+    # by project
+    r = client.get(f"/alerts?project_id={po}")
+    assert "o-ssl.com" in r.text and "a-ssl.com" not in r.text
+    # blank params tolerated (no 422)
+    assert client.get("/alerts?company_id=&project_id=&severity=&kind=").status_code == 200
