@@ -124,6 +124,52 @@ def test_sync_does_not_overwrite_manual(make_company, make_project, make_domain)
     assert _run(run()) == manual_expiry  # manual expiry untouched
 
 
+def test_sync_creates_in_default_project(make_company, make_project):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+
+    async def _c() -> int:
+        async with SessionLocal() as s:
+            acc = await svc.create_namecheap_account(
+                s,
+                label="main",
+                api_user="u",
+                api_key="SECRETKEY",
+                username="u",
+                client_ip="1.2.3.4",
+                actor_id=None,
+                default_project_id=proj,
+            )
+            return acc.id
+
+    aid = _run(_c())
+    conn = FakeConnector(
+        domains=[RegistrarDomain("auto1.com", datetime(2027, 1, 1, tzinfo=UTC), True)]
+    )
+
+    async def run():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            report = await svc.sync_account(s, acc, connector=conn)
+        async with SessionLocal() as s:
+            d = (
+                await s.execute(select(Domain).where(Domain.fqdn == "auto1.com"))
+            ).scalar_one_or_none()
+            staged = (
+                await s.execute(select(func.count()).select_from(UnassignedDomain))
+            ).scalar_one()
+            return report, d, staged
+
+    report, domain, staged = _run(run())
+    # Domain went straight into the default project, not the unassigned queue.
+    assert report.created == 1 and report.staged == 0
+    assert domain is not None
+    assert domain.project_id == proj
+    assert domain.registrar_account_id == aid
+    assert (domain.field_sources or {}).get("project_id") == "manual"
+    assert staged == 0
+
+
 def test_sync_auth_error_marks_account(make_company, make_project):
     aid = _make_account()
     conn = FakeConnector(error="API Key is invalid")
