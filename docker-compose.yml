@@ -6,6 +6,9 @@ x-app-env: &app-env
   DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://domainguard:domainguard@postgres:5432/domainguard}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
   DG_MASTER_KEY: ${DG_MASTER_KEY:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
   ENVIRONMENT: ${ENVIRONMENT:-development}
   TIMEZONE: ${TIMEZONE:-Europe/Kyiv}
   DG_ADMIN_EMAIL: ${DG_ADMIN_EMAIL:-admin@example.com}

@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     # deployment; kept only in the environment, never in the DB or git.
     dg_master_key: str = Field(default="", repr=False)
 
+    # --- Google OAuth (optional sign-in for existing users, T37) ---
+    # Supplied at deploy from Google Cloud Console; the secret is never logged.
+    # When unset, the Google button is hidden and the routes 404 (feature dormant).
+    google_client_id: str = ""
+    google_client_secret: str = Field(default="", repr=False)
+    # Public callback URL registered with Google. If blank it is derived from the
+    # incoming request base URL (…/auth/google/callback).
+    google_redirect_uri: str = ""
+
     # --- HTTP server ---
     host: str = "0.0.0.0"  # noqa: S104 — bound inside the container network only
     port: int = 8000
@@ -52,6 +61,10 @@ class Settings(BaseSettings):
     def sync_database_url(self) -> str:
         """Synchronous DSN (psycopg-style) for tools that need it, e.g. Alembic offline."""
         return str(self.database_url).replace("+asyncpg", "")
+
+    @property
+    def google_oauth_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
 
 
 @lru_cache

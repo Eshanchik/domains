@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Вход — DomainGuard{% endblock %}
 {% block content %}
-<form method="post" action="/login" style="background:rgba(16,21,31,.86);box-shadow:0 0 44px rgba(0,0,0,.6)">
+{% set oauth_2fa = oauth_2fa | default(false) %}
+<form method="post" action="{{ '/auth/google/2fa' if oauth_2fa else '/login' }}" style="background:rgba(16,21,31,.86);box-shadow:0 0 44px rgba(0,0,0,.6)">
   {# ── header frame ── #}
   <div class="flex items-center gap-1.5 px-3 py-2 text-xs" style="color:var(--cyan)">
     <span>╭─</span>
@@ -23,7 +24,12 @@
       <div class="flash flash-error">{{ error }}</div>
     {% endif %}
 
+    {% if oauth_2fa %}
+    <div class="mb-4 text-xs" style="color:var(--dim)">google ✔ OK · требуется 2fa код</div>
+    {% endif %}
+
     {# prompt-style credential rows #}
+    {% if not oauth_2fa %}
     <label class="mb-3 flex items-center gap-3">
       <span style="color:var(--dim);width:88px">login:</span>
       <input name="login" required value="{{ login_value or '' }}" autofocus
@@ -34,6 +40,7 @@
       <input name="password" type="password" required
              class="flex-1" style="background:transparent;border:none;outline:none;color:var(--tx);font:inherit;letter-spacing:.15em;caret-color:var(--acc)" />
     </label>
+    {% endif %}
     {% if need_code %}
     <label class="mb-3 flex items-center gap-3">
       <span style="color:var(--dim);width:88px">2fa code:</span>
@@ -43,9 +50,18 @@
     {% endif %}
 
     <div class="mt-5 flex items-center gap-4">
-      <button type="submit" class="btn btn-primary">Войти</button>
+      <button type="submit" class="btn btn-primary">{{ 'Подтвердить' if oauth_2fa else 'Войти' }}</button>
       <span class="text-xs" style="color:var(--faint)">enter ↵ · matrix rain на фоне</span>
     </div>
+
+    {% if google_enabled and not oauth_2fa %}
+    <div class="mt-4 flex items-center gap-3 text-xs" style="color:var(--dim)">
+      <span style="flex:1;height:1px;background:var(--bd)"></span>
+      <span>или</span>
+      <span style="flex:1;height:1px;background:var(--bd)"></span>
+    </div>
+    <a href="/auth/google/login" class="btn btn-secondary mt-3 inline-block">войти через Google</a>
+    {% endif %}
   </div>
 
   {# ── footer frame ── #}

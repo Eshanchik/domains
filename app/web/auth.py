@@ -39,7 +39,11 @@ async def login_form(
 ) -> HTMLResponse:
     if user is not None:
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse(request, "login.html", {"error": None, "need_code": False})
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"error": None, "need_code": False, "google_enabled": settings.google_oauth_enabled},
+    )
 
 
 @router.post("/login")
@@ -59,7 +63,12 @@ async def login_submit(
         response = templates.TemplateResponse(
             request,
             "login.html",
-            {"error": message, "need_code": need_code, "login_value": login},
+            {
+                "error": message,
+                "need_code": need_code,
+                "login_value": login,
+                "google_enabled": settings.google_oauth_enabled,
+            },
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
         return response
