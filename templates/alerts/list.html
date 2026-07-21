@@ -6,7 +6,7 @@
 {% set sev_color = {"high": "var(--mag)", "medium": "var(--amber)", "low": "var(--dim)"} %}
 <div class="mb-4 flex items-baseline gap-3">
   <h1 class="page-title">АЛЕРТЫ</h1>
-  <span class="text-xs" style="color:var(--dim)">// event log</span>
+  <span class="text-xs" style="color:var(--dim)">// event log · {{ rows | length }} active</span>
 </div>
 
 <div style="background:var(--panel);padding:6px 0">

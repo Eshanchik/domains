@@ -41,7 +41,7 @@
 
 {# Map a check/health/alert status string to a badge tone. #}
 {% macro status_badge(status) %}
-{%- set tone = {"ok":"green","up":"green","fail":"red","down":"red","stale":"amber","high":"red","medium":"amber","low":"blue"}.get(status, "gray") -%}
+{%- set tone = {"ok":"green","up":"green","warn":"amber","fail":"red","down":"red","stale":"amber","high":"red","medium":"amber","low":"blue"}.get(status, "gray") -%}
 <span class="badge badge-{{ tone }}">{{ status }}</span>
 {%- endmacro %}
 

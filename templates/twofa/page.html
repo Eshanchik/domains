@@ -14,7 +14,7 @@
 {% elif secret %}
   <div class="card card-p max-w-lg space-y-4">
     <p class="text-sm text-slate-700 dark:text-slate-300">1. Добавьте ключ в приложение (Google Authenticator, Aegis, 1Password и т.п.):</p>
-    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
+    <div class="border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
       <div>Секрет: <code class="font-mono">{{ secret }}</code></div>
       <div class="mt-1 break-all text-xs muted">otpauth URI: {{ uri }}</div>
     </div>

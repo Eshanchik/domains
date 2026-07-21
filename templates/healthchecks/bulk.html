@@ -31,7 +31,7 @@
 
   <fieldset>
     <legend class="mb-1 label">Домены</legend>
-    <div class="max-h-64 overflow-y-auto rounded-lg border border-slate-200 p-2 text-sm dark:border-slate-700">
+    <div class="max-h-64 overflow-y-auto border border-slate-200 p-2 text-sm dark:border-slate-700">
       {% for d in domains %}
         <label class="block"><input type="checkbox" name="domain_ids" value="{{ d.id }}" class="checkbox" /> {{ d.fqdn }}</label>
       {% else %}

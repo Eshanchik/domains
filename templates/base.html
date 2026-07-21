@@ -233,6 +233,13 @@
         .statcell-l { color:var(--dim); font-size:10px; letter-spacing:.1em; text-transform:uppercase; }
         .statcell-v { font-size:26px; font-weight:700; line-height:1.25; color:var(--acc); }
         .statcell-v.danger { color:var(--mag); }
+        .statcell-v.warn { color:var(--amber); }
+        .statcell-v.info { color:var(--cyan); }
+        .statcell-v.ok { color:var(--ok); }
+        /* Row-action dropdown items — accent-fill hover (btop menu). */
+        .menu-item { display:block; width:100%; text-align:left; padding:6px 12px; color:var(--tx);
+          background:transparent; border:none; cursor:pointer; font:inherit; }
+        .menu-item:hover { background:var(--acc); color:var(--bg); }
       }
       @media (min-width: 640px) { .statgrid { grid-template-columns: repeat(3, 1fr); } }
       @media (min-width: 1024px) { .statgrid.cols4 { grid-template-columns: repeat(4, 1fr); } }

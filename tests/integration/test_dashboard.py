@@ -86,6 +86,46 @@ def test_overview_counts(make_company, make_project, make_domain):
     assert ov.by_company[0].domains == 6
 
 
+def _add_ssl_event(domain_id: int) -> None:
+    async def _a():
+        async with SessionLocal() as s:
+            s.add(
+                AlertEvent(
+                    domain_id=domain_id,
+                    kind="ssl",
+                    dedupe_key=f"{domain_id}:ssl",
+                    severity="high",
+                    state="active",
+                    fired_at=NOW,
+                    payload_json={"days_left": 3},
+                )
+            )
+            await s.commit()
+
+    _run(_a())
+
+
+def test_company_breakdown_ssl_and_cost(make_company, make_project, make_domain):
+    from decimal import Decimal
+
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    d_ssl = make_domain(proj, fqdn="ssl-bad.com", renewal_price=Decimal("18.00"))
+    make_domain(proj, fqdn="paid.com", renewal_price=Decimal("12.50"))
+    # EUR-priced domain must be excluded from the USD annual cost.
+    make_domain(proj, fqdn="eur.com", renewal_price=Decimal("99.00"), renewal_currency="EUR")
+    _add_ssl_event(d_ssl)
+
+    async def run():
+        async with SessionLocal() as s:
+            return await build_overview(s, _admin(), now=NOW)
+
+    row = _run(run()).by_company[0]
+    assert row.name == "ACME"
+    assert row.ssl_problems == 1
+    assert row.cost_usd == 30.5  # 18.00 + 12.50, EUR excluded
+
+
 def test_vt_detect_filter(make_company, make_project, make_domain):
     acme = make_company(code="acme")
     proj = make_project(acme, code="web")

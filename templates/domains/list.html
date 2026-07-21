@@ -58,18 +58,18 @@
             {% if s %}{{ ui.badge(s[0], s[1]) }}{% else %}<span class="muted">—</span>{% endif %}
           </td>
           <td class="muted">{{ {none:'неизвестно', true:'да', false:'нет'}[d.auto_renew] }}</td>
-          <td>{% if d.is_active %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</td>
+          <td>{% if d.is_active %}<span style="color:var(--ok)">● up</span>{% else %}<span style="color:var(--mag)">○ down</span>{% endif %}</td>
           <td class="text-right">
             <details class="relative inline-block text-left">
               <summary class="cursor-pointer list-none px-1.5 [&::-webkit-details-marker]:hidden" style="color:var(--dim)" aria-label="Действия">[ ⋮ ]</summary>
               <div class="absolute right-0 z-20 mt-1 w-48 text-sm" style="background:var(--panel);border:1px solid var(--bd);box-shadow:0 8px 26px rgba(0,0,0,.6)">
-                <a href="/domains/{{ d.id }}" class="block px-3 py-1.5 hover:bg-slate-700">&gt; Открыть</a>
+                <a href="/domains/{{ d.id }}" class="menu-item">&gt; Открыть</a>
                 {% if user.role.value in ("admin", "manager") %}
-                <a href="/domains/{{ d.id }}/edit" class="block px-3 py-1.5 hover:bg-slate-700">&gt; Изменить</a>
-                <button type="button" class="block w-full px-3 py-1.5 text-left hover:bg-slate-700"
+                <a href="/domains/{{ d.id }}/edit" class="menu-item">&gt; Изменить</a>
+                <button type="button" class="menu-item"
                         hx-post="/domains/{{ d.id }}/check" hx-swap="none"
                         hx-on::after-request="this.textContent='✔ поставлено'; this.disabled=true">&gt; Проверить сейчас</button>
-                <button type="button" class="block w-full px-3 py-1.5 text-left hover:bg-slate-700"
+                <button type="button" class="menu-item"
                         hx-post="/domains/{{ d.id }}/archive"
                         hx-vals='{"archived": "{{ "true" if d.is_active else "false" }}"}'
                         hx-target="body" hx-swap="outerHTML">&gt; {{ "В архив" if d.is_active else "Из архива" }}</button>
@@ -102,12 +102,19 @@
     {% endif %}
   </form>
 
-  {% if pages > 1 %}
-  <div class="flex items-center gap-1.5 px-4 py-3 text-sm" style="border-top:1px solid var(--bd)">
+  {% if total %}
+  {%- set first = (page - 1) * page_size + 1 -%}
+  {%- set last = [page * page_size, total] | min -%}
+  {%- set sortq = 'sort=' ~ f.sort ~ '&dir=' ~ f.dir ~ ('&' ~ filter_qs if filter_qs else '') -%}
+  <div class="flex items-center gap-1.5 px-4 py-3 text-sm" style="border-top:1px solid var(--bd);color:var(--dim)">
+    <span>{{ first }}–{{ last }} of {{ total }}</span>
+    <span class="flex-1"></span>
+    {% if page > 1 %}<a href="?page={{ page - 1 }}&{{ sortq }}" style="color:var(--dim)">‹</a>{% else %}<span style="color:var(--faint)">‹</span>{% endif %}
     {% for pnum in range(1, pages + 1) %}
-      <a href="?page={{ pnum }}&sort={{ f.sort }}&dir={{ f.dir }}{{ '&' ~ filter_qs if filter_qs else '' }}"
-         class="btn btn-sm {{ 'btn-primary' if pnum == page else 'btn-secondary' }}">{{ pnum }}</a>
+      {% if pnum == page %}<span style="background:var(--acc);color:var(--bg);padding:1px 8px">{{ pnum }}</span>
+      {% else %}<a href="?page={{ pnum }}&{{ sortq }}" style="padding:1px 6px;color:var(--dim)">{{ pnum }}</a>{% endif %}
     {% endfor %}
+    {% if page < pages %}<a href="?page={{ page + 1 }}&{{ sortq }}" style="color:var(--dim)">›</a>{% else %}<span style="color:var(--faint)">›</span>{% endif %}
   </div>
   {% endif %}
 {% endcall %}
