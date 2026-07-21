@@ -15,6 +15,9 @@ case "$role" in
   scheduler)
     exec python -m app.scheduler.main
     ;;
+  mcp)
+    exec uvicorn app.mcp.asgi:app --host "${HOST:-0.0.0.0}" --port "${MCP_PORT:-9000}"
+    ;;
   migrate)
     exec alembic upgrade head
     ;;

@@ -23,6 +23,7 @@ dependencies = [
     "tzdata>=2024.1",
     "dnspython>=2.6",
     "pyotp>=2.9",
+    "mcp>=1.28",
 ]
 
 [project.optional-dependencies]
