@@ -26,7 +26,7 @@
         <option value="">Истекает: любой</option>
         {% for d in [7, 30, 90] %}<option value="{{ d }}" {{ 'selected' if f.expiring == d else '' }}>≤ {{ d }} дн.</option>{% endfor %}
       </select>
-      <label class="inline-flex items-center gap-1.5 px-1" style="color:var(--dim)"><input type="checkbox" name="archived" value="true" class="checkbox" onchange="this.form.requestSubmit()" {{ 'checked' if f.archived else '' }} /> archived</label>
+      <label class="term-check"><input type="checkbox" name="archived" value="true" onchange="this.form.requestSubmit()" {{ 'checked' if f.archived else '' }} /><span class="box"></span>archived</label>
       <button type="submit" class="btn btn-secondary btn-sm">{{ ui.icon("filter", "h-4 w-4") }}Фильтр</button>
       <a href="/domains/export.csv?{{ request.url.query }}" class="btn btn-secondary btn-sm">{{ ui.icon("download", "h-4 w-4") }}Экспорт CSV</a>
     </form>
@@ -37,9 +37,9 @@
       <thead>
         <tr>
           <th class="w-8"></th>
-          <th><a href="?sort=fqdn&dir={{ 'desc' if f.sort=='fqdn' and f.dir=='asc' else 'asc' }}">Домен</a></th>
+          <th><a href="?sort=fqdn&dir={{ 'desc' if f.sort=='fqdn' and f.dir=='asc' else 'asc' }}{{ '&' ~ filter_qs if filter_qs else '' }}">Домен{% if f.sort=='fqdn' %} {{ '▼' if f.dir=='desc' else '▲' }}{% endif %}</a></th>
           <th>Проект</th>
-          <th><a href="?sort=expiry_date&dir={{ 'desc' if f.sort=='expiry_date' and f.dir=='asc' else 'asc' }}">Истекает</a></th>
+          <th><a href="?sort=expiry_date&dir={{ 'desc' if f.sort=='expiry_date' and f.dir=='asc' else 'asc' }}{{ '&' ~ filter_qs if filter_qs else '' }}">Истекает{% if f.sort=='expiry_date' %} {{ '▼' if f.dir=='desc' else '▲' }}{% endif %}</a></th>
           <th>SSL</th>
           <th>Auto-renew</th>
           <th>Активен</th>
@@ -105,7 +105,7 @@
   {% if pages > 1 %}
   <div class="flex items-center gap-1.5 px-4 py-3 text-sm" style="border-top:1px solid var(--bd)">
     {% for pnum in range(1, pages + 1) %}
-      <a href="?page={{ pnum }}&sort={{ f.sort }}&dir={{ f.dir }}"
+      <a href="?page={{ pnum }}&sort={{ f.sort }}&dir={{ f.dir }}{{ '&' ~ filter_qs if filter_qs else '' }}"
          class="btn btn-sm {{ 'btn-primary' if pnum == page else 'btn-secondary' }}">{{ pnum }}</a>
     {% endfor %}
   </div>

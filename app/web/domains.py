@@ -6,6 +6,8 @@ project must be within the user's scope. CSV export mirrors the current filter.
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, Form, Query, Request, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import ValidationError
@@ -45,6 +47,35 @@ def _int_or_none(value: str | None) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def _active_filter_qs(
+    company_id: int | None,
+    project_id: int | None,
+    tag: str | None,
+    q: str | None,
+    expiring: int | None,
+    archived: bool,
+) -> str:
+    """URL-encode only the active filter params (no sort/dir/page).
+
+    Sort and pagination links append this so switching sort order or page keeps
+    the current filters instead of resetting to "all domains".
+    """
+    params: list[tuple[str, str]] = []
+    if company_id is not None:
+        params.append(("company_id", str(company_id)))
+    if project_id is not None:
+        params.append(("project_id", str(project_id)))
+    if tag:
+        params.append(("tag", tag))
+    if q:
+        params.append(("q", q))
+    if expiring is not None:
+        params.append(("expiring", str(expiring)))
+    if archived:
+        params.append(("archived", "true"))
+    return urlencode(params)
 
 
 def _filter_from_query(
@@ -120,6 +151,7 @@ async def domains_list(
     project_names = {p.id: p.name for p in projects}
     ssl = await svc.ssl_status_map(session, [d.id for d in items])
     pages = max(1, (total + flt.page_size - 1) // flt.page_size)
+    filter_qs = _active_filter_qs(company_id, project_id, tag, q, expiring, archived)
     return templates.TemplateResponse(
         request,
         "domains/list.html",
@@ -129,6 +161,7 @@ async def domains_list(
             "total": total,
             "page": flt.page,
             "pages": pages,
+            "filter_qs": filter_qs,
             "companies": companies,
             "projects": projects,
             "project_names": project_names,
