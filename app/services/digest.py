@@ -24,10 +24,11 @@ from app.models.notification import NotificationChannel
 log = logging.getLogger("services.digest")
 
 _SECTIONS = [
-    ("expiry", "Истекают домены"),
-    ("ssl", "Истекает SSL"),
-    ("vt_malicious", "VirusTotal детекты"),
-    ("health_down", "Health-check недоступны"),
+    ("expiry", "⏳", "Истекают домены"),
+    ("ssl", "🔒", "Истекает SSL"),
+    ("vt_malicious", "🚨", "VirusTotal детекты"),
+    ("health_down", "🔴", "Health-check недоступны"),
+    ("ns_change", "🛡️", "Смена NS"),
 ]
 
 
@@ -52,7 +53,7 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
     """Build the digest text for a channel, or None if there is nothing to report."""
     scope = await scoped_domain_ids(session, channel)
     stmt = (
-        select(AlertEvent, Domain.fqdn)
+        select(AlertEvent, Domain.fqdn, Domain.expiry_date)
         .join(Domain, Domain.id == AlertEvent.domain_id)
         .where(AlertEvent.state == "active")
     )
@@ -65,22 +66,29 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
         return None
 
     by_kind: dict[str, list[str]] = {}
-    for event, fqdn in rows:
+    for event, fqdn, expiry in rows:
         p = event.payload_json or {}
-        if event.kind in ("expiry", "ssl"):
-            label = f"{fqdn} ({p.get('days')} дн.)"
+        if event.kind == "expiry":
+            date = expiry.strftime("%Y-%m-%d") if expiry else "—"
+            label = f"{fqdn} — через {p.get('days')} дн. ({date})"
+        elif event.kind == "ssl":
+            label = f"{fqdn} — через {p.get('days')} дн."
         elif event.kind == "vt_malicious":
-            label = f"{fqdn} ({p.get('malicious')} детектов)"
+            label = f"{fqdn} — {p.get('malicious')} детектов"
+        elif event.kind == "health_down":
+            label = f"{fqdn} — недоступен"
+        elif event.kind == "ns_change":
+            label = f"{fqdn} — сменились NS"
         else:
             label = fqdn
         by_kind.setdefault(event.kind, []).append(label)
 
-    lines = ["📋 Ежедневная сводка DomainGuard"]
-    for kind, title in _SECTIONS:
+    lines = [f"📋 DomainGuard — активные алерты ({len(rows)})"]
+    for kind, emoji, title in _SECTIONS:
         items = by_kind.get(kind)
         if items:
-            lines.append(f"\n{title} ({len(items)}):")
-            lines.extend(f"• {item}" for item in items)
+            lines.append(f"\n{emoji} {title} ({len(items)}):")
+            lines.extend(f"  • {item}" for item in items)
     return "\n".join(lines)
 
 
