@@ -369,6 +369,29 @@ def test_sort_links_preserve_active_filters(
     assert "other-one.com" not in sorted_page.text
 
 
+def test_project_chips_render_and_filter(
+    client, make_user, make_company, make_project, make_domain
+) -> None:
+    acme = make_company(code="acme")
+    p1 = make_project(acme, code="web")
+    p2 = make_project(acme, code="blog")
+    make_domain(p1, fqdn="in-web.com")
+    make_domain(p2, fqdn="in-blog.com")
+    _admin(client, make_user)
+
+    page = client.get("/domains")
+    assert page.status_code == 200
+    assert "проект:" in page.text
+    assert f"?project_id={p1}" in page.text  # a chip link per project
+    assert f"?project_id={p2}" in page.text
+
+    # Clicking a project chip filters to just that project's domains.
+    filtered = client.get(f"/domains?project_id={p1}")
+    assert filtered.status_code == 200
+    assert "in-web.com" in filtered.text
+    assert "in-blog.com" not in filtered.text
+
+
 def test_archived_checkbox_is_terminal_styled(client, make_user, make_company) -> None:
     make_company(code="acme")
     _admin(client, make_user)

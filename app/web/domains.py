@@ -153,6 +153,8 @@ async def domains_list(
     ssl = await svc.ssl_status_map(session, [d.id for d in items])
     pages = max(1, (total + flt.page_size - 1) // flt.page_size)
     filter_qs = _active_filter_qs(company_id, project_id, tag, q, expiring, archived)
+    # Same filters minus project — for the project quick-switch chips.
+    filter_qs_no_project = _active_filter_qs(company_id, None, tag, q, expiring, archived)
     return templates.TemplateResponse(
         request,
         "domains/list.html",
@@ -164,6 +166,7 @@ async def domains_list(
             "pages": pages,
             "page_size": flt.page_size,
             "filter_qs": filter_qs,
+            "filter_qs_no_project": filter_qs_no_project,
             "companies": companies,
             "projects": projects,
             "project_names": project_names,

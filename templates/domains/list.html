@@ -6,17 +6,27 @@
                  action_label=("+ Добавить" if user.role.value in ("admin", "manager") else none),
                  action_href="/domains/new") %}
 
+  {# project quick-switch chips (preserve other filters + sort) #}
+  {%- set proj_tail = ('&' ~ filter_qs_no_project) if filter_qs_no_project else '' -%}
+  <div style="border-bottom:1px solid var(--bd);padding:8px 14px" class="flex flex-wrap items-center gap-2 text-sm">
+    <span style="color:var(--dim)">&gt; проект:</span>
+    <a href="?sort={{ f.sort }}&dir={{ f.dir }}{{ proj_tail }}"
+       class="btn btn-sm {{ 'btn-primary' if not f.project_id else 'btn-secondary' }}">Все</a>
+    {% for p in projects %}
+    <a href="?project_id={{ p.id }}&sort={{ f.sort }}&dir={{ f.dir }}{{ proj_tail }}"
+       class="btn btn-sm {{ 'btn-primary' if f.project_id == p.id else 'btn-secondary' }}">{{ p.name }}</a>
+    {% endfor %}
+  </div>
+
   {# filters row (auto-submit on change) #}
   <div style="border-bottom:1px solid var(--bd);padding:8px 14px">
     <form method="get" action="/domains" class="flex flex-wrap items-end gap-2 text-sm">
+      {# project is controlled by the chips above; keep it across filter changes #}
+      <input type="hidden" name="project_id" value="{{ f.project_id or '' }}" />
       <input name="q" value="{{ f.q or '' }}" placeholder="Поиск по домену" class="input w-56" />
       <select name="company_id" class="select w-auto" onchange="this.form.requestSubmit()">
         <option value="">Все компании</option>
         {% for c in companies %}<option value="{{ c.id }}" {{ 'selected' if f.company_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
-      </select>
-      <select name="project_id" class="select w-auto" onchange="this.form.requestSubmit()">
-        <option value="">Все проекты</option>
-        {% for p in projects %}<option value="{{ p.id }}" {{ 'selected' if f.project_id == p.id else '' }}>{{ p.name }}</option>{% endfor %}
       </select>
       <select name="tag" class="select w-auto" onchange="this.form.requestSubmit()">
         <option value="">Все теги</option>
