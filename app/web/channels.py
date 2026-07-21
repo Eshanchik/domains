@@ -21,6 +21,7 @@ admin_required = require_role(Role.admin)
 async def channels_list(
     request: Request,
     test: str | None = Query(None),
+    sent: str | None = Query(None),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(admin_required),
 ) -> HTMLResponse:
@@ -33,6 +34,7 @@ async def channels_list(
             "companies": await companies_svc.list_companies(session, user),
             "projects": await companies_svc.list_projects(session, user),
             "test_result": test,
+            "sent_result": sent,
             "target_of": svc.channel_target,
         },
     )
@@ -106,3 +108,23 @@ async def channel_test(
     return RedirectResponse(
         f"/channels?test={'ok' if ok else 'fail'}", status_code=status.HTTP_303_SEE_OTHER
     )
+
+
+@router.post("/{channel_id}/send-now")
+async def channel_send_now(
+    channel_id: int,
+    session: AsyncSession = Depends(get_session),
+    redis=Depends(redis_dep),
+    _admin: User = Depends(admin_required),
+):
+    """Compose the channel's alert digest and send it right now (manual trigger)."""
+    from app.services.digest import compose_digest
+
+    channel = await svc.get_channel(session, channel_id)
+    result = "none"  # nothing to report
+    if channel is not None:
+        text = await compose_digest(session, channel)
+        if text:
+            ok = await svc.send_to_channel(session, redis, channel, text)
+            result = "ok" if ok else "fail"
+    return RedirectResponse(f"/channels?sent={result}", status_code=status.HTTP_303_SEE_OTHER)

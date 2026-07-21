@@ -9,6 +9,13 @@
     Не удалось отправить (проверьте токен бота в Настройках и chat_id).
   </div>
 {% endif %}
+{% if sent_result == "ok" %}
+  <div class="flash flash-success">Сводка алертов отправлена в канал.</div>
+{% elif sent_result == "fail" %}
+  <div class="flash flash-error">Не удалось отправить сводку (проверьте настройки канала).</div>
+{% elif sent_result == "none" %}
+  <div class="flash">Активных алертов в скоупе канала нет — отправлять нечего.</div>
+{% endif %}
 
 {% call ui.panel("Каналы (" ~ (channels | length) ~ ")") %}
   <table class="dg-table">
@@ -30,6 +37,9 @@
         <td>{{ c.mode }}{% if c.digest_time %} ({{ c.digest_time }}){% endif %}</td>
         <td>
           <div class="flex items-center gap-3">
+            <form method="post" action="/channels/{{ c.id }}/send-now" class="inline">
+              <button type="submit" class="link">Отправить сейчас</button>
+            </form>
             <form method="post" action="/channels/{{ c.id }}/test" class="inline">
               <button type="submit" class="link">Тест</button>
             </form>
