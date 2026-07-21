@@ -90,6 +90,24 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  mcp:
+    build:
+      context: .
+    command: ["mcp"]
+    environment:
+      <<: *app-env
+      MCP_PORT: "9000"
+    expose:
+      - "9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   scheduler:
     build:
       context: .

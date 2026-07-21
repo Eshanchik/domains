@@ -609,7 +609,23 @@
     неизвестный email → отказ; невалидный state/CSRF → отказ; неверифицированный
     email → отказ); миграции при необходимости через Alembic; SPEC обновлён.
 
-- [ ] **T38. MCP-сервер DomainGuard (read + полный набор действий супер-админа).**
+- [x] **T38. MCP-сервер DomainGuard (read + полный набор действий супер-админа).** _(2026-07-21)_
+  Отдельный `mcp`-контейнер (тот же образ, `command: ["mcp"]` → `uvicorn
+  app.mcp.asgi:app`), MCP поверх **streamable HTTP** (FastMCP, `mcp>=1.28`), путь
+  `/mcp` через nginx (dev+prod, `proxy_buffering off` для SSE). Аутентификация —
+  ASGI-middleware по **API-токену** (`api_tokens.resolve_user`), user_id в
+  contextvar → инструменты грузят acting-user; нет токена → 401. `app/mcp/tools.py`
+  — тестируемые функции `(session, user, …)`, вызывают **те же сервисы**, что и UI
+  (скоуп + аудит автоматом); мутации требуют Manager+. 12 инструментов: read
+  (whoami/overview/list_domains/get_domain/list_alerts/list_companies/costs_summary)
+  + write Manager+ (create_domain/set_domain_archived/check_domain_now/resolve_alert/
+  import_domains). Роль/скоуп владельца токена применяются к каждому вызову (admin →
+  полный super-admin, viewer → только чтение). Тесты 230 (+10: скоуп чтения,
+  Manager+-гейт, create+audit, out-of-scope→отказ, check-now enqueue, resolve,
+  import dry-run, token resolve, middleware 401/контекст). **Проверено вживую**:
+  контейнер поднят, initialize+tools/list (12) по токену, whoami/list_companies/
+  create_domain end-to-end + запись в audit (actor=владелец токена), без токена 401.
+  `docs/MCP.md` (как подключиться), SPEC FR-API-3. **Без миграции.**
   Отдельный MCP-сервер (Python, поверх нашего сервисного слоя/REST `/api/v1`),
   чтобы давать Claude задачи по сайту. Инструменты: чтение (домены/детали/алерты/
   расходы/проверки) + мутации уровня супер-админа (добавить/изменить/архивировать

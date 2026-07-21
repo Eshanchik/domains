@@ -192,6 +192,15 @@
 - FR-API-1. `/api/v1/*` на все сущности; авторизация — сессия (UI) и
   персональные токены (Фаза 2 — полноценные API-токены и внешние вебхуки).
 - FR-API-2. UI работает поверх тех же сервисов (логика не дублируется).
+- FR-API-3. **MCP-сервер** (`mcp`-контейнер, streamable HTTP, путь `/mcp` через
+  nginx) — чтобы давать ассистенту (Claude) задачи по реестру. Аутентификация —
+  DomainGuard API-токен (`Authorization: Bearer`); роль/скоуп владельца токена
+  применяются к каждому вызову (admin-токен → полный super-admin, viewer → только
+  чтение). Инструменты вызывают те же сервисы (FR-API-2), поэтому скоуп-проверки и
+  аудит мутаций работают без изменений. Набор: чтение (whoami/overview/list_domains/
+  get_domain/list_alerts/list_companies/costs_summary) + мутации Manager+
+  (create_domain/set_domain_archived/check_domain_now/resolve_alert/import_domains).
+  Подробнее — `docs/MCP.md`.
 
 ---
 
