@@ -2,13 +2,9 @@
 {% import "_components.html" as ui %}
 {% block title %}Компании — DomainGuard{% endblock %}
 {% block content %}
-{% call ui.page_header("Компании", count=companies | length) %}
-  {% if user.role.value == "admin" %}
-    <a href="/companies/new" class="btn btn-primary">{{ ui.icon("plus", "h-4 w-4") }}Добавить</a>
-  {% endif %}
-{% endcall %}
-
-<div class="card overflow-x-auto">
+{% call ui.panel("Компании (" ~ (companies | length) ~ ")",
+                 action_label=("+ Добавить" if user.role.value == "admin" else none),
+                 action_href="/companies/new") %}
   <table class="dg-table">
     <thead>
       <tr>
@@ -21,7 +17,7 @@
     <tbody>
       {% for c in companies %}
       <tr>
-        <td class="font-medium text-slate-800 dark:text-slate-100">{{ c.name }}</td>
+        <td style="color:var(--acc)">{{ c.name }}</td>
         <td class="font-mono">{{ c.code }}</td>
         <td>{{ c.projects | length }}</td>
         {% if user.role.value == "admin" %}
@@ -41,5 +37,5 @@
       {% endfor %}
     </tbody>
   </table>
-</div>
+{% endcall %}
 {% endblock %}

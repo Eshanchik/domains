@@ -3,10 +3,10 @@
 {% block title %}{{ "Изменить проект" if project else "Новый проект" }} — DomainGuard{% endblock %}
 {% block content %}
 {% set editing = project is not none %}
-{{ ui.page_header("Изменить проект" if editing else "Новый проект") }}
 {{ ui.flash(error) }}
-<div class="card card-p max-w-lg">
-<form method="post" action="{{ '/projects/' ~ project.id if editing else '/projects' }}" class="space-y-4">
+<div class="max-w-lg">
+{% call ui.panel("Изменить проект" if editing else "Новый проект") %}
+<form method="post" action="{{ '/projects/' ~ project.id if editing else '/projects' }}" class="space-y-4" style="padding:16px 18px">
   <div>
     <label class="label" for="company_id">Компания</label>
     {% if editing %}
@@ -38,5 +38,6 @@
     <a href="/projects" class="btn btn-ghost">Отмена</a>
   </div>
 </form>
+{% endcall %}
 </div>
 {% endblock %}

@@ -3,10 +3,10 @@
 {% block title %}{{ "Изменить компанию" if company else "Новая компания" }} — DomainGuard{% endblock %}
 {% block content %}
 {% set editing = company is not none %}
-{{ ui.page_header("Изменить компанию" if editing else "Новая компания") }}
 {{ ui.flash(error) }}
-<div class="card card-p max-w-lg">
-<form method="post" action="{{ '/companies/' ~ company.id if editing else '/companies' }}" class="space-y-4">
+<div class="max-w-lg">
+{% call ui.panel("Изменить компанию" if editing else "Новая компания") %}
+<form method="post" action="{{ '/companies/' ~ company.id if editing else '/companies' }}" class="space-y-4" style="padding:16px 18px">
   <div>
     <label class="label" for="name">Название</label>
     <input id="name" name="name" required value="{{ company.name if editing else '' }}" class="input" />
@@ -20,5 +20,6 @@
     <a href="/companies" class="btn btn-ghost">Отмена</a>
   </div>
 </form>
+{% endcall %}
 </div>
 {% endblock %}

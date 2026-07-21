@@ -2,8 +2,6 @@
 {% import "_components.html" as ui %}
 {% block title %}Каналы — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Каналы уведомлений") }}
-
 {% if test_result == "ok" %}
   <div class="flash flash-success">Тестовое сообщение отправлено.</div>
 {% elif test_result == "fail" %}
@@ -12,7 +10,7 @@
   </div>
 {% endif %}
 
-<div class="card overflow-x-auto mb-6">
+{% call ui.panel("Каналы (" ~ (channels | length) ~ ")") %}
   <table class="dg-table">
     <thead>
       <tr>
@@ -23,7 +21,7 @@
     <tbody>
       {% for c in channels %}
       <tr>
-        <td class="font-medium text-slate-800 dark:text-slate-100">{{ c.name }}</td>
+        <td style="color:var(--acc)">{{ c.name }}</td>
         <td>{{ c.type }}</td>
         <td>
           {% if c.is_default %}глобальный{% elif c.project_id %}проект #{{ c.project_id }}{% elif c.company_id %}компания #{{ c.company_id }}{% else %}—{% endif %}
@@ -47,15 +45,14 @@
       {% endfor %}
     </tbody>
   </table>
-</div>
+{% endcall %}
 
-<h2 class="section-title">Добавить канал</h2>
-<p class="mb-3 text-xs muted">
-  Telegram: токен бота — в <a href="/settings" class="link">Настройках</a>, здесь chat_id.
-  Slack/Discord/Webhook: URL incoming-webhook (хранится зашифрованным).
-</p>
-<div class="card card-p max-w-lg">
-<form method="post" action="/channels" class="grid grid-cols-2 gap-3 text-sm">
+{% call ui.panel("Добавить канал") %}
+<form method="post" action="/channels" class="grid grid-cols-2 gap-3 text-sm" style="padding:16px 18px">
+  <p class="col-span-2 text-xs muted">
+    Telegram: токен бота — в <a href="/settings" class="link">Настройках</a>, здесь chat_id.
+    Slack/Discord/Webhook: URL incoming-webhook (хранится зашифрованным).
+  </p>
   <label><span class="label">Название</span><input name="name" required class="input" /></label>
   <label><span class="label">Тип</span>
     <select name="type" class="select">
@@ -84,5 +81,5 @@
   <label><span class="label">Время дайджеста (HH:MM, Europe/Kyiv)</span><input name="digest_time" placeholder="09:00" class="input" /></label>
   <div class="col-span-2"><button type="submit" class="btn btn-primary">Добавить</button></div>
 </form>
-</div>
+{% endcall %}
 {% endblock %}

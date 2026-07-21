@@ -3,10 +3,10 @@
 {% block title %}{{ "Изменить домен" if domain else "Новый домен" }} — DomainGuard{% endblock %}
 {% block content %}
 {% set editing = domain is not none %}
-{{ ui.page_header("Изменить домен" if editing else "Новый домен") }}
 {{ ui.flash(error) }}
-<div class="card card-p max-w-lg">
-<form method="post" action="{{ '/domains/' ~ domain.id if editing else '/domains' }}" class="space-y-4">
+<div class="max-w-lg">
+{% call ui.panel("Изменить домен" if editing else "Новый домен") %}
+<form method="post" action="{{ '/domains/' ~ domain.id if editing else '/domains' }}" class="space-y-4" style="padding:16px 18px">
   <div>
     <label class="label" for="fqdn">Домен (FQDN)</label>
     {% if editing %}
@@ -47,5 +47,6 @@
     <a href="/domains" class="btn btn-ghost">Отмена</a>
   </div>
 </form>
+{% endcall %}
 </div>
 {% endblock %}

@@ -2,13 +2,13 @@
 {% import "_components.html" as ui %}
 {% block title %}Массовое добавление health-check — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Массовое добавление health-check") }}
 <p class="mb-4 text-sm muted">
   Шаблон применяется к выбранным доменам. В URL можно использовать <code>{{ '{fqdn}' }}</code> —
   он подставится в адрес каждого домена.
 </p>
-<div class="card card-p max-w-2xl">
-<form method="post" action="/healthchecks/bulk" class="space-y-4">
+<div class="max-w-2xl">
+{% call ui.panel("Массовое добавление health-check") %}
+<form method="post" action="/healthchecks/bulk" class="space-y-4" style="padding:16px 18px">
   <div class="grid grid-cols-2 gap-3 text-sm">
     <label class="col-span-2"><span class="label">URL-шаблон</span>
       <input name="url" required placeholder="https://{{ '{fqdn}' }}/click?pid=1&offer_id=625"
@@ -31,7 +31,7 @@
 
   <fieldset>
     <legend class="mb-1 label">Домены</legend>
-    <div class="max-h-64 overflow-y-auto border border-slate-200 p-2 text-sm dark:border-slate-700">
+    <div class="max-h-64 overflow-y-auto p-2 text-sm" style="border:1px solid var(--bd)">
       {% for d in domains %}
         <label class="block"><input type="checkbox" name="domain_ids" value="{{ d.id }}" class="checkbox" /> {{ d.fqdn }}</label>
       {% else %}
@@ -45,5 +45,6 @@
     <a href="/domains" class="btn btn-ghost">Отмена</a>
   </div>
 </form>
+{% endcall %}
 </div>
 {% endblock %}

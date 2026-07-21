@@ -2,11 +2,8 @@
 {% import "_components.html" as ui %}
 {% block title %}Пользователи — DomainGuard{% endblock %}
 {% block content %}
-{% call ui.page_header("Пользователи") %}
-  <a href="/users/new" class="btn btn-primary">{{ ui.icon("plus", "h-4 w-4") }}Добавить</a>
-{% endcall %}
-
-<div class="card overflow-x-auto">
+{% call ui.panel("Пользователи (" ~ (users | length) ~ ")",
+                 action_label="+ Добавить", action_href="/users/new") %}
   <table class="dg-table">
     <thead>
       <tr>
@@ -23,7 +20,7 @@
       {% for u in users %}
       <tr>
         <td>{{ u.id }}</td>
-        <td class="font-medium text-slate-800 dark:text-slate-100">{{ u.login }}</td>
+        <td style="color:var(--acc)">{{ u.login }}</td>
         <td>{{ u.email }}</td>
         <td>{{ u.role.value }}</td>
         <td>{% if u.is_active %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</td>
@@ -40,5 +37,5 @@
       {% endfor %}
     </tbody>
   </table>
-</div>
+{% endcall %}
 {% endblock %}

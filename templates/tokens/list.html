@@ -2,17 +2,18 @@
 {% import "_components.html" as ui %}
 {% block title %}API-токены — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("API-токены") }}
 
 {% if new_token %}
-<div class="flash flash-success">
-  <p class="mb-1">Токен создан. Скопируйте его — он показывается только один раз:</p>
-  <code class="block break-all bg-white/70 px-2 py-1 font-mono text-slate-900 dark:bg-slate-900/60 dark:text-slate-100">{{ new_token }}</code>
-  <p class="mt-1 text-xs muted">Использование: <code>Authorization: Bearer {{ new_token }}</code></p>
+{% call ui.panel("Новый токен") %}
+<div class="space-y-1" style="padding:16px 18px">
+  <p>Токен создан. Скопируйте его — он показывается только один раз:</p>
+  <code class="block break-all px-2 py-1 font-mono" style="background:var(--panel-2)">{{ new_token }}</code>
+  <p class="text-xs muted">Использование: <code>Authorization: Bearer {{ new_token }}</code></p>
 </div>
+{% endcall %}
 {% endif %}
 
-<div class="card overflow-x-auto">
+{% call ui.panel("API-токены") %}
   <table class="dg-table">
     <thead>
       <tr>
@@ -41,14 +42,13 @@
       {% endfor %}
     </tbody>
   </table>
-</div>
+{% endcall %}
 
-<h2 class="section-title mt-6 mb-2">Создать токен</h2>
-<div class="card card-p max-w-md">
-  <form method="post" action="/tokens" class="flex gap-2">
-    <input name="name" required placeholder="Название (напр. ci-script)" class="input w-full" />
-    <button type="submit" class="btn btn-primary whitespace-nowrap">Создать</button>
-  </form>
-</div>
+{% call ui.panel("Создать токен") %}
+<form method="post" action="/tokens" class="flex gap-2" style="padding:16px 18px">
+  <input name="name" required placeholder="Название (напр. ci-script)" class="input w-full" />
+  <button type="submit" class="btn btn-primary whitespace-nowrap">Создать</button>
+</form>
+{% endcall %}
 <p class="mt-2 text-xs muted">REST API: <code>GET /api/v1/domains</code>, <code>/api/v1/alerts</code>, <code>/api/v1/me</code>.</p>
 {% endblock %}

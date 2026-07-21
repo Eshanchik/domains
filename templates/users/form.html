@@ -3,11 +3,11 @@
 {% block title %}{{ "Изменить пользователя" if subject else "Новый пользователь" }} — DomainGuard{% endblock %}
 {% block content %}
 {% set editing = subject is not none %}
-{{ ui.page_header("Изменить пользователя" if editing else "Новый пользователь") }}
 {{ ui.flash(error) }}
 
-<div class="card card-p max-w-lg">
-<form method="post" action="{{ '/users/' ~ subject.id if editing else '/users' }}" class="space-y-4">
+<div class="max-w-lg">
+{% call ui.panel("Изменить пользователя" if editing else "Новый пользователь") %}
+<form method="post" action="{{ '/users/' ~ subject.id if editing else '/users' }}" class="space-y-4" style="padding:16px 18px">
   <div>
     <label class="label" for="login">Логин</label>
     {% if editing %}
@@ -53,17 +53,20 @@
     <a href="/users" class="btn btn-ghost">Отмена</a>
   </div>
 </form>
+{% endcall %}
 </div>
 
 {% if editing %}
-<div class="card card-p max-w-lg mt-6">
-<form method="post" action="/users/{{ subject.id }}/password" class="space-y-2">
+<div class="max-w-lg mt-6">
+{% call ui.panel("Сброс пароля") %}
+<form method="post" action="/users/{{ subject.id }}/password" class="space-y-2" style="padding:16px 18px">
   <label class="label" for="newpass">Сбросить пароль (мин. 8)</label>
   <div class="flex gap-2">
     <input id="newpass" name="password" type="password" minlength="8" required class="input" />
     <button type="submit" class="btn btn-secondary whitespace-nowrap">Сбросить</button>
   </div>
 </form>
+{% endcall %}
 </div>
 {% endif %}
 {% endblock %}

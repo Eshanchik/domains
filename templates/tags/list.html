@@ -2,18 +2,8 @@
 {% import "_components.html" as ui %}
 {% block title %}Теги — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Теги", count=tags | length) }}
-
-{% if user.role.value == "admin" %}
-<div class="card card-p max-w-lg mb-5">
-<form method="post" action="/tags" class="flex gap-2">
-  <input name="name" required placeholder="Новый тег" class="input" />
-  <button type="submit" class="btn btn-primary whitespace-nowrap">{{ ui.icon("plus", "h-4 w-4") }}Добавить</button>
-</form>
-</div>
-{% endif %}
-
-<div class="flex flex-wrap gap-2">
+{% call ui.panel("Теги (" ~ (tags | length) ~ ")") %}
+<div class="flex flex-wrap gap-2" style="padding:16px 18px">
   {% for t in tags %}
     <span class="badge badge-gray gap-1.5">
       {{ t.name }}
@@ -27,4 +17,16 @@
     <p class="muted">Нет тегов.</p>
   {% endfor %}
 </div>
+{% endcall %}
+
+{% if user.role.value == "admin" %}
+<div class="max-w-lg">
+{% call ui.panel("Добавить тег") %}
+<form method="post" action="/tags" class="flex gap-2" style="padding:16px 18px">
+  <input name="name" required placeholder="Новый тег" class="input" />
+  <button type="submit" class="btn btn-primary whitespace-nowrap">{{ ui.icon("plus", "h-4 w-4") }}Добавить</button>
+</form>
+{% endcall %}
+</div>
+{% endif %}
 {% endblock %}
