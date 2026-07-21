@@ -638,7 +638,23 @@
     мутации пишут audit; тесты (happy + отказ по правам + ошибочные входы);
     README по запуску; secret/токены не логируются.
 
-- [ ] **T39. Аудит безопасности.**
+- [x] **T39. Аудит безопасности.** _(2026-07-21)_
+  Отчёт `docs/security-audit.md` (authn/authz, секреты, SSRF, инъекции, CSRF,
+  заголовки, rate-limit, MCP-экспозиция, зависимости, контейнеры). Исправлены
+  **high/critical**: (1) **SSRF в health-checks** — `app/core/net_guard.py`
+  (`validate_public_url`: только http(s), блок приватных/reserved-адресов после
+  DNS-резолва; вызывается перед каждым запросом И на каждом redirect-хопе — редиректы
+  теперь следуются вручную, ≤5, с ревалидацией; `validate_scheme` на создании →
+  `InvalidHealthCheckUrl`/400); (2) **security-заголовки** nginx (HSTS/nosniff/
+  X-Frame-Options/Referrer-Policy); (3) **edge rate-limit** nginx на `/login` (20 r/m)
+  и `/mcp` (300 r/m). Проверено вживую (заголовки на `/login`, `/mcp` 401,
+  вход работает). Тесты (+9: net_guard scheme/literal/resolved-блокировка,
+  worker отказывает при приватном резолве и не шлёт запрос, create отклоняет
+  `file://`). Reviewed-safe: SQLAlchemy параметризован, retention DROP по
+  regex-именам из pg_inherits, Jinja autoescape, argon2, cookie httponly/secure/
+  samesite=lax (CSRF), токены sha256, секреты Fernet+repr=False, OAuth state+
+  existing-only+2FA, non-root. Medium/low → Backlog (CSP, dep-scan, MCP IP-allowlist,
+  DB least-privilege).
   Сквозной аудит: authn/authz (сессии, 2FA, роли/скоупы, новый Google-OAuth и
   MCP-токены), хранение секретов (Fernet at-rest, маскирование, отсутствие утечек
   в логах/API), внешние вызовы (SSRF в health-check URL, RDAP/WHOIS/VT/Namecheap),
@@ -667,3 +683,9 @@
   registrars/settings/companies/projects/tags/webhooks/tokens) в рамки `ui.panel`;
   строка фильтров доменов как терминальный промпт + per-row select-чекбоксы как
   `[x]`-тоглы.
+
+- **T39 отложенные (medium/low безопасность):** Content-Security-Policy (нужна
+  политика под Tailwind Play CDN + inline-стили/HTMX, чтобы не сломать UI);
+  автоскан уязвимостей зависимостей в CI (`pip-audit`/Dependabot); опциональный
+  IP-allowlist на `/mcp` в nginx (если список клиентов известен); ревизия
+  минимальных прав роли БД приложения.
