@@ -26,6 +26,8 @@ async def registrars_page(
     accounts = await svc.list_accounts(session)
     unassigned = await svc.list_unassigned(session)
     types = await svc.account_type_labels(session)
+    projects = await companies_svc.list_projects(session, user)
+    project_names = {p.id: p.name for p in projects}
     return templates.TemplateResponse(
         request,
         "registrars/list.html",
@@ -35,8 +37,19 @@ async def registrars_page(
             "unassigned_count": len(unassigned),
             "ip_of": svc.account_masked_ip,
             "types": types,
+            "projects": projects,
+            "project_names": project_names,
         },
     )
+
+
+def _int_or_none(value: str | None) -> int | None:
+    if value is None or value.strip() == "":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 @router.post("/registrars")
@@ -46,6 +59,7 @@ async def registrar_create(
     api_key: str = Form(...),
     username: str = Form(...),
     client_ip: str = Form(...),
+    default_project_id: str = Form(""),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(admin_required),
 ):
@@ -57,6 +71,7 @@ async def registrar_create(
         username=username,
         client_ip=client_ip,
         actor_id=user.id,
+        default_project_id=_int_or_none(default_project_id),
     )
     return RedirectResponse("/registrars", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -66,11 +81,17 @@ async def godaddy_create(
     label: str = Form(...),
     api_key: str = Form(...),
     api_secret: str = Form(...),
+    default_project_id: str = Form(""),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(admin_required),
 ):
     await svc.create_godaddy_account(
-        session, label=label, api_key=api_key, api_secret=api_secret, actor_id=user.id
+        session,
+        label=label,
+        api_key=api_key,
+        api_secret=api_secret,
+        actor_id=user.id,
+        default_project_id=_int_or_none(default_project_id),
     )
     return RedirectResponse("/registrars", status_code=status.HTTP_303_SEE_OTHER)
 

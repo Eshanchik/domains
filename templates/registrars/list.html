@@ -8,7 +8,7 @@
   <table class="dg-table">
     <thead>
       <tr>
-        <th>Метка</th><th>Регистратор</th><th>Client IP</th><th>Статус</th>
+        <th>Метка</th><th>Регистратор</th><th>Проект по умолч.</th><th>Client IP</th><th>Статус</th>
         <th>Последний синк</th><th></th>
       </tr>
     </thead>
@@ -17,6 +17,7 @@
       <tr>
         <td style="color:var(--acc)">{{ a.label }}</td>
         <td>{{ types.get(a.registrar_id, '—') }}</td>
+        <td>{% if a.default_project_id %}{{ project_names.get(a.default_project_id, '—') }}{% else %}<span class="muted">неразобранные</span>{% endif %}</td>
         <td class="font-mono">{{ ip_of(a) or '—' }}</td>
         <td>
           {% if a.status == 'error' %}{{ ui.badge(a.status, "red") }}{% else %}{{ ui.badge(a.status, "green") }}{% endif %}
@@ -31,7 +32,7 @@
         </td>
       </tr>
       {% else %}
-      {{ ui.empty_row(6, "Аккаунтов нет.") }}
+      {{ ui.empty_row(7, "Аккаунтов нет.") }}
       {% endfor %}
     </tbody>
   </table>
@@ -47,6 +48,12 @@
       <label><span class="label">UserName</span><input name="username" required class="input" /></label>
       <label><span class="label">ApiKey</span><input name="api_key" type="password" required class="input" /></label>
       <label><span class="label">Client IP (whitelisted)</span><input name="client_ip" required class="input input-mono" /></label>
+      <label class="col-span-2"><span class="label">Проект по умолчанию (опц.)</span>
+        <select name="default_project_id" class="select">
+          <option value="">— в «неразобранные» —</option>
+          {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select>
+      </label>
       <div class="col-span-2"><button type="submit" class="btn btn-primary">Добавить Namecheap</button></div>
     </form>
   </div>
@@ -58,6 +65,12 @@
       <label><span class="label">Метка</span><input name="label" required class="input" /></label>
       <label><span class="label">API Key</span><input name="api_key" required class="input" /></label>
       <label class="col-span-2"><span class="label">API Secret</span><input name="api_secret" type="password" required class="input" /></label>
+      <label class="col-span-2"><span class="label">Проект по умолчанию (опц.)</span>
+        <select name="default_project_id" class="select">
+          <option value="">— в «неразобранные» —</option>
+          {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select>
+      </label>
       <div class="col-span-2"><button type="submit" class="btn btn-primary">Добавить GoDaddy</button></div>
     </form>
   </div>

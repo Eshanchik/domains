@@ -62,6 +62,7 @@ async def create_account(
     label: str,
     creds: dict,
     actor_id: int,
+    default_project_id: int | None = None,
 ) -> RegistrarAccount:
     """Create a registrar account of any supported connector type (encrypted creds)."""
     name = REGISTRAR_NAMES.get(connector_type, connector_type.title())
@@ -70,6 +71,7 @@ async def create_account(
         registrar_id=registrar.id,
         label=label,
         credentials_enc=crypto.encrypt(json.dumps(creds)),
+        default_project_id=default_project_id,
     )
     session.add(account)
     await session.flush()
@@ -95,6 +97,7 @@ async def create_namecheap_account(
     username: str,
     client_ip: str,
     actor_id: int,
+    default_project_id: int | None = None,
 ) -> RegistrarAccount:
     return await create_account(
         session,
@@ -107,6 +110,7 @@ async def create_namecheap_account(
             "client_ip": client_ip,
         },
         actor_id=actor_id,
+        default_project_id=default_project_id,
     )
 
 
@@ -117,6 +121,7 @@ async def create_godaddy_account(
     api_key: str,
     api_secret: str,
     actor_id: int,
+    default_project_id: int | None = None,
 ) -> RegistrarAccount:
     return await create_account(
         session,
@@ -124,6 +129,7 @@ async def create_godaddy_account(
         label=label,
         creds={"api_key": api_key, "api_secret": api_secret},
         actor_id=actor_id,
+        default_project_id=default_project_id,
     )
 
 
@@ -188,6 +194,7 @@ async def build_account_connector(
 class SyncReport:
     updated: int = 0
     staged: int = 0
+    created: int = 0  # auto-created in the account's default project (T42)
     error: str | None = None
 
 
@@ -223,6 +230,9 @@ async def sync_account(
         if existing is not None:
             _merge_into_domain(session, existing, rd, account)
             report.updated += 1
+        elif account.default_project_id is not None:
+            await _create_in_project(session, account, rd, norm, account.default_project_id)
+            report.created += 1
         else:
             await _stage_unassigned(session, account, rd, norm.fqdn)
             report.staged += 1
@@ -284,6 +294,41 @@ async def _stage_unassigned(
         )
     )
     await session.execute(stmt)
+
+
+async def _create_in_project(
+    session: AsyncSession,
+    account: RegistrarAccount,
+    rd: RegistrarDomain,
+    norm,
+    project_id: int,
+) -> None:
+    """Create a synced domain directly in the account's default project (T42).
+
+    Skips the ``unassigned`` queue. ``project_id`` source is ``manual`` so a later
+    autosync never re-homes it. No commit — ``sync_account`` commits the batch.
+    """
+    domain = Domain(
+        project_id=project_id,
+        fqdn=norm.fqdn,
+        punycode=norm.punycode,
+        tld=norm.tld,
+        expiry_date=rd.expiry_date,
+        auto_renew=rd.auto_renew,
+        registrar_id=account.registrar_id,
+        registrar_account_id=account.id,
+        field_sources={"fqdn": SYNC_SOURCE, "project_id": "manual"},
+    )
+    session.add(domain)
+    await session.flush()
+    await record_audit(
+        session,
+        actor_id=None,
+        action="create",
+        entity_type="domain",
+        entity_id=domain.id,
+        diff={"fqdn": norm.fqdn, "project_id": project_id, "source": "registrar-default"},
+    )
 
 
 # --- Unassigned queue --------------------------------------------------------

@@ -36,6 +36,11 @@ class RegistrarAccount(Base):
     )
     label: Mapped[str] = mapped_column(String(128))
     credentials_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # If set, domains synced from this account are created directly in this project
+    # instead of going to the "unassigned" queue (T42).
+    default_project_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(16), default="ok")  # ok|error
     last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
