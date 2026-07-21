@@ -32,17 +32,30 @@ def _is_secure() -> bool:
     return settings.environment == "production"
 
 
+def _safe_next(value: str | None) -> str:
+    """Only allow local-path redirects (no scheme, no protocol-relative) — else '/'."""
+    if value and value.startswith("/") and not value.startswith("//"):
+        return value
+    return "/"
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(
     request: Request,
+    next: str = "",
     user: User | None = Depends(current_user_optional),
 ) -> HTMLResponse:
     if user is not None:
-        return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(_safe_next(next), status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"error": None, "need_code": False, "google_enabled": settings.google_oauth_enabled},
+        {
+            "error": None,
+            "need_code": False,
+            "google_enabled": settings.google_oauth_enabled,
+            "next_url": next,
+        },
     )
 
 
@@ -52,6 +65,7 @@ async def login_submit(
     login: str = Form(...),
     password: str = Form(...),
     code: str = Form(""),
+    next: str = Form(""),
     session: AsyncSession = Depends(get_session),
     redis: aioredis.Redis = Depends(redis_dep),
 ):
@@ -68,13 +82,14 @@ async def login_submit(
                 "need_code": need_code,
                 "login_value": login,
                 "google_enabled": settings.google_oauth_enabled,
+                "next_url": next,
             },
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
         return response
 
     token = await create_session(redis, result.user.id)
-    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(_safe_next(next), status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         SESSION_COOKIE,
         token,

@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # incoming request base URL (…/auth/google/callback).
     google_redirect_uri: str = ""
 
+    # Public base URL of the deployment (scheme+host, no trailing slash), e.g.
+    # https://domains.zimbabwe-inc.com. Used to build absolute OAuth/MCP URLs
+    # (issuer, consent redirect). Falls back to localhost for dev.
+    public_base_url: str = "http://localhost:8080"
+
     # --- HTTP server ---
     host: str = "0.0.0.0"  # noqa: S104 — bound inside the container network only
     port: int = 8000

@@ -7,11 +7,15 @@ reports them to the client. ``build_mcp`` is factored out for tests.
 
 from __future__ import annotations
 
+from mcp.server.auth.middleware.auth_context import get_access_token
+from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
+from app.config import settings
 from app.db import SessionLocal
 from app.mcp import tools
-from app.mcp.context import current_user_id
+from app.mcp.oauth_provider import MCP_SCOPE, DomainGuardOAuthProvider
 from app.services import auth as auth_svc
 
 INSTRUCTIONS = (
@@ -23,17 +27,40 @@ INSTRUCTIONS = (
 
 
 async def _acting_user(session):
-    user_id = current_user_id.get()
-    if user_id is None:
+    token = get_access_token()
+    if token is None or token.subject is None:
         raise tools.ToolPermissionError("no authenticated user in context")
-    user = await auth_svc.get_user_by_id(session, user_id)
+    user = await auth_svc.get_user_by_id(session, int(token.subject))
     if user is None or not user.is_active:
         raise tools.ToolPermissionError("acting user not found or inactive")
     return user
 
 
+def _auth_settings() -> AuthSettings:
+    base = settings.public_base_url.rstrip("/")
+    return AuthSettings(
+        issuer_url=base,
+        resource_server_url=f"{base}/mcp",
+        required_scopes=[MCP_SCOPE],
+        client_registration_options=ClientRegistrationOptions(
+            enabled=True, valid_scopes=[MCP_SCOPE], default_scopes=[MCP_SCOPE]
+        ),
+        revocation_options=RevocationOptions(enabled=True),
+    )
+
+
 def build_mcp() -> FastMCP:
-    mcp = FastMCP("DomainGuard", instructions=INSTRUCTIONS, stateless_http=True)
+    mcp = FastMCP(
+        "DomainGuard",
+        instructions=INSTRUCTIONS,
+        stateless_http=True,
+        auth_server_provider=DomainGuardOAuthProvider(),
+        auth=_auth_settings(),
+        # nginx already enforces server_name + TLS, and MCP clients connect
+        # server-side (not via a victim browser), so the SDK's DNS-rebinding Host
+        # check would only reject our own proxied Host. Disable it here.
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
 
     @mcp.tool(description="Return the identity and role of the current API token.")
     async def whoami() -> dict:
