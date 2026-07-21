@@ -68,6 +68,12 @@ class GoDaddyConnector(RegistrarConnector):
                 name = item.get("domain")
                 if not name:
                     continue
+                # The GoDaddy API returns every domain ever held by the account,
+                # including EXPIRED/CANCELLED ones the dashboard hides. Only sync
+                # live ones (status ACTIVE); tolerate a missing status field.
+                status = (item.get("status") or "").upper()
+                if status and status != "ACTIVE":
+                    continue
                 out.append(
                     RegistrarDomain(
                         fqdn=name,

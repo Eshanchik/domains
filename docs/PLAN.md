@@ -789,6 +789,20 @@
     login; юзер без права → отказ на согласии; выданный токен работает на `/mcp`;
     API-токен по-прежнему работает; тесты; вживую подключение из claude.ai.
 
+- [x] **T47. GoDaddy: синк только ACTIVE + чистка мёртвых + метка источника.** _(2026-07-21)_
+  Находка: GoDaddy API (`GET /v1/domains`) отдаёт **все** домены аккаунта, включая
+  истёкшие/отменённые (которые UI прячет) → в систему заезжало «кладбище» с датами
+  2018–2021, раздувая «истекает ≤N». Фиксы: (1) коннектор GoDaddy пропускает
+  домены со `status != ACTIVE` (отсутствие статуса → берём, backward-safe);
+  (2) `registrars.archive_expired(connector_type/account_id, apply)` — архивирует
+  активные домены с `expiry_date < now` (скоуп по коннектору/аккаунту), + скрипт
+  `scripts/archive_dead.py` (dry-run по умолчанию, `--apply`); (3) метка источника
+  теперь per-connector (`api-godaddy`/`api-namecheap` через `_account_source`),
+  а не захардкоженный `api-namecheap`. Тесты (коннектор пропускает EXPIRED/CANCELLED,
+  берёт ACTIVE+без-статуса; синк godaddy → source `api-godaddy`; archive_expired —
+  прошлые архивируются, будущие нет). На проде: dry-run → `--apply` для аккаунта
+  GoDaddy.
+
 ## Backlog / находки
 
 - Точная глубина очередей Dramatiq и латентность проверок в `/metrics` — требуют

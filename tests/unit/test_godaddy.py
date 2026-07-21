@@ -31,6 +31,20 @@ async def test_list_domains_parses() -> None:
 
 
 @respx.mock
+async def test_skips_non_active_status() -> None:
+    respx.get(API_URL).respond(
+        json=[
+            {"domain": "live.com", "expires": "2027-05-01T00:00:00Z", "status": "ACTIVE"},
+            {"domain": "dead.com", "expires": "2019-05-01T00:00:00Z", "status": "EXPIRED"},
+            {"domain": "cancelled.net", "expires": "2020-01-01T00:00:00Z", "status": "CANCELLED"},
+            {"domain": "nostatus.io", "expires": "2027-01-01T00:00:00Z"},  # missing → kept
+        ]
+    )
+    domains = await _conn().list_domains()
+    assert [d.fqdn for d in domains] == ["live.com", "nostatus.io"]
+
+
+@respx.mock
 async def test_auth_error_raises() -> None:
     respx.get(API_URL).respond(403)
     with pytest.raises(ConnectorError):

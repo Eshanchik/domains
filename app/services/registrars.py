@@ -209,6 +209,7 @@ async def sync_account(
     ts = now or datetime.now(UTC)
     report = SyncReport()
     conn = connector or await build_account_connector(session, account)
+    source = await _account_source(session, account)
     try:
         domains = await conn.list_domains()
     except ConnectorError as exc:
@@ -228,10 +229,10 @@ async def sync_account(
             await session.execute(select(Domain).where(Domain.fqdn == norm.fqdn))
         ).scalar_one_or_none()
         if existing is not None:
-            _merge_into_domain(session, existing, rd, account)
+            _merge_into_domain(session, existing, rd, account, source)
             report.updated += 1
         elif account.default_project_id is not None:
-            await _create_in_project(session, account, rd, norm, account.default_project_id)
+            await _create_in_project(session, account, rd, norm, account.default_project_id, source)
             report.created += 1
         else:
             await _stage_unassigned(session, account, rd, norm.fqdn)
@@ -244,8 +245,19 @@ async def sync_account(
     return report
 
 
+async def _account_source(session: AsyncSession, account: RegistrarAccount) -> str:
+    """The field-source label for a sync, e.g. ``api-namecheap`` / ``api-godaddy``."""
+    registrar = await session.get(Registrar, account.registrar_id)
+    ctype = registrar.connector_type if registrar and registrar.connector_type else None
+    return f"api-{ctype}" if ctype else SYNC_SOURCE
+
+
 def _merge_into_domain(
-    session: AsyncSession, domain: Domain, rd: RegistrarDomain, account: RegistrarAccount
+    session: AsyncSession,
+    domain: Domain,
+    rd: RegistrarDomain,
+    account: RegistrarAccount,
+    source: str = SYNC_SOURCE,
 ) -> None:
     field_sources = dict(domain.field_sources or {})
     domain.registrar_id = account.registrar_id
@@ -262,11 +274,11 @@ def _merge_into_domain(
                         field=field,
                         old=domain.expiry_date.isoformat() if domain.expiry_date else None,
                         new=value.isoformat(),
-                        source=SYNC_SOURCE,
+                        source=source,
                     )
                 )
             setattr(domain, field, value)
-            field_sources[field] = SYNC_SOURCE
+            field_sources[field] = source
 
     _set("expiry_date", rd.expiry_date)
     _set("auto_renew", rd.auto_renew)
@@ -302,6 +314,7 @@ async def _create_in_project(
     rd: RegistrarDomain,
     norm,
     project_id: int,
+    source: str = SYNC_SOURCE,
 ) -> None:
     """Create a synced domain directly in the account's default project (T42).
 
@@ -317,7 +330,7 @@ async def _create_in_project(
         auto_renew=rd.auto_renew,
         registrar_id=account.registrar_id,
         registrar_account_id=account.id,
-        field_sources={"fqdn": SYNC_SOURCE, "project_id": "manual"},
+        field_sources={"fqdn": source, "project_id": "manual"},
     )
     session.add(domain)
     await session.flush()
@@ -327,11 +340,58 @@ async def _create_in_project(
         action="create",
         entity_type="domain",
         entity_id=domain.id,
-        diff={"fqdn": norm.fqdn, "project_id": project_id, "source": "registrar-default"},
+        diff={"fqdn": norm.fqdn, "project_id": project_id, "source": source},
     )
 
 
 # --- Unassigned queue --------------------------------------------------------
+
+
+async def archive_expired(
+    session: AsyncSession,
+    *,
+    connector_type: str | None = None,
+    account_id: int | None = None,
+    now: datetime | None = None,
+    apply: bool = False,
+) -> list[str]:
+    """Archive active domains whose expiry is already in the past (dead registrar cruft).
+
+    Optionally scoped to a registrar ``connector_type`` (e.g. ``godaddy``) and/or a
+    single ``account_id``. Returns the affected FQDNs. With ``apply=False`` it only
+    reports (dry run). Used to clean up expired domains the GoDaddy API surfaces but
+    the dashboard hides (T47).
+    """
+    ts = now or datetime.now(UTC)
+    stmt = (
+        select(Domain)
+        .join(RegistrarAccount, RegistrarAccount.id == Domain.registrar_account_id)
+        .where(Domain.is_active.is_(True), Domain.expiry_date.is_not(None), Domain.expiry_date < ts)
+    )
+    if account_id is not None:
+        stmt = stmt.where(RegistrarAccount.id == account_id)
+    if connector_type is not None:
+        stmt = stmt.join(Registrar, Registrar.id == RegistrarAccount.registrar_id).where(
+            Registrar.connector_type == connector_type
+        )
+    domains = list((await session.execute(stmt.order_by(Domain.fqdn))).scalars().all())
+    if apply and domains:
+        for d in domains:
+            d.is_active = False
+        await record_audit(
+            session,
+            actor_id=None,
+            action="archive_expired",
+            entity_type="domain",
+            entity_id=None,
+            diff={
+                "count": len(domains),
+                "connector_type": connector_type,
+                "account_id": account_id,
+            },
+        )
+        await session.commit()
+    return [d.fqdn for d in domains]
 
 
 async def list_unassigned(session: AsyncSession) -> list[UnassignedDomain]:

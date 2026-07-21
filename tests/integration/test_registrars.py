@@ -170,6 +170,81 @@ def test_sync_creates_in_default_project(make_company, make_project):
     assert staged == 0
 
 
+def test_godaddy_sync_tags_source(make_company, make_project):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+
+    async def _c() -> int:
+        async with SessionLocal() as s:
+            acc = await svc.create_godaddy_account(
+                s, label="gd", api_key="k", api_secret="s", actor_id=None, default_project_id=proj
+            )
+            return acc.id
+
+    aid = _run(_c())
+    conn = FakeConnector(domains=[RegistrarDomain("gdauto.com", datetime(2027, 1, 1, tzinfo=UTC))])
+
+    async def run():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            await svc.sync_account(s, acc, connector=conn)
+        async with SessionLocal() as s:
+            return (await s.execute(select(Domain).where(Domain.fqdn == "gdauto.com"))).scalar_one()
+
+    d = _run(run())
+    # Source label reflects the actual connector, not the hardcoded namecheap one.
+    assert (d.field_sources or {}).get("fqdn") == "api-godaddy"
+
+
+def test_archive_expired_scoped(make_company, make_project, make_domain):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+
+    async def _c() -> int:
+        async with SessionLocal() as s:
+            acc = await svc.create_godaddy_account(
+                s, label="gd", api_key="k", api_secret="s", actor_id=None
+            )
+            return acc.id
+
+    aid = _run(_c())
+    make_domain(
+        proj,
+        fqdn="dead.com",
+        registrar_account_id=aid,
+        expiry_date=datetime(2019, 1, 1, tzinfo=UTC),
+    )
+    make_domain(
+        proj,
+        fqdn="alive.com",
+        registrar_account_id=aid,
+        expiry_date=datetime(2030, 1, 1, tzinfo=UTC),
+    )
+
+    async def run():
+        async with SessionLocal() as s:
+            preview = await svc.archive_expired(s, connector_type="godaddy", apply=False)
+        async with SessionLocal() as s:
+            applied = await svc.archive_expired(s, connector_type="godaddy", apply=True)
+        async with SessionLocal() as s:
+            active = {
+                d.fqdn: d.is_active
+                for d in (
+                    await s.execute(
+                        select(Domain).where(Domain.fqdn.in_(["dead.com", "alive.com"]))
+                    )
+                )
+                .scalars()
+                .all()
+            }
+        return preview, applied, active
+
+    preview, applied, active = _run(run())
+    assert preview == ["dead.com"] and applied == ["dead.com"]  # only the past-expiry one
+    assert active["dead.com"] is False  # archived
+    assert active["alive.com"] is True  # future expiry untouched
+
+
 def test_sync_auth_error_marks_account(make_company, make_project):
     aid = _make_account()
     conn = FakeConnector(error="API Key is invalid")
