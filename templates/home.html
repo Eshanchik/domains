@@ -2,37 +2,43 @@
 {% import "_components.html" as ui %}
 {% block title %}Обзор — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Обзор", subtitle="Сводка по доменам и проверкам") }}
-
-<div class="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-  {{ ui.stat("Всего доменов", ov.total, "/domains") }}
-  {{ ui.stat("Истекает ≤ 7 дн.", ov.expiring_7, "/domains?expiring=7", danger=true) }}
-  {{ ui.stat("Истекает ≤ 30 дн.", ov.expiring_30, "/domains?expiring=30") }}
-  {{ ui.stat("Истекает ≤ 90 дн.", ov.expiring_90, "/domains?expiring=90") }}
-  {{ ui.stat("Проблемы SSL", ov.ssl_problems, "/alerts", danger=true) }}
-  {{ ui.stat("VT-детекты", ov.vt_detects, "/domains?vt_detect=true", danger=true) }}
-  {{ ui.stat("Health-check down", ov.health_down, "/domains?health_down=true", danger=true) }}
+<div class="mb-4 flex items-baseline gap-3">
+  <h1 class="page-title">Обзор</h1>
+  <span class="text-xs" style="color:var(--dim)">// system health &amp; expiries</span>
 </div>
 
-<div class="card">
-  <div class="card-p pb-0"><h2 class="section-title mb-0">По компаниям</h2></div>
-  <div class="overflow-x-auto p-2">
-    <table class="dg-table">
-      <thead>
-        <tr><th>Компания</th><th>Доменов</th><th>Истекает ≤ 30 дн.</th></tr>
-      </thead>
-      <tbody>
-        {% for row in ov.by_company %}
-        <tr>
-          <td class="font-medium text-slate-800 dark:text-slate-100">{{ row.name }}</td>
-          <td>{{ row.domains }}</td>
-          <td>{% if row.expiring_30 %}{{ ui.badge(row.expiring_30, "red") }}{% else %}{{ row.expiring_30 }}{% endif %}</td>
-        </tr>
-        {% else %}
-        {{ ui.empty_row(3, "Нет данных.") }}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<div class="statgrid cols4 mb-6">
+  {% macro cell(label, value, href, danger=false) %}
+    <a href="{{ href }}" class="statcell">
+      <div class="statcell-l">{{ label }}</div>
+      <div class="statcell-v {{ 'danger' if danger and value else '' }}">{{ value }}</div>
+    </a>
+  {% endmacro %}
+  {{ cell("Всего доменов", ov.total, "/domains") }}
+  {{ cell("Истекает ≤ 7 дн.", ov.expiring_7, "/domains?expiring=7", danger=true) }}
+  {{ cell("Истекает ≤ 30 дн.", ov.expiring_30, "/domains?expiring=30") }}
+  {{ cell("Истекает ≤ 90 дн.", ov.expiring_90, "/domains?expiring=90") }}
+  {{ cell("Проблемы SSL", ov.ssl_problems, "/alerts", danger=true) }}
+  {{ cell("VT-детекты", ov.vt_detects, "/domains?vt_detect=true", danger=true) }}
+  {{ cell("Health-check down", ov.health_down, "/domains?health_down=true", danger=true) }}
 </div>
+
+{% call ui.panel("По компаниям") %}
+<table class="dg-table">
+  <thead>
+    <tr><th>Компания</th><th class="text-right">Доменов</th><th class="text-right">Истекает ≤ 30 дн.</th></tr>
+  </thead>
+  <tbody>
+    {% for row in ov.by_company %}
+    <tr>
+      <td style="color:var(--acc)">{{ row.name }}</td>
+      <td class="text-right">{{ row.domains }}</td>
+      <td class="text-right">{% if row.expiring_30 %}<span style="color:var(--amber)">{{ row.expiring_30 }}</span>{% else %}{{ row.expiring_30 }}{% endif %}</td>
+    </tr>
+    {% else %}
+    {{ ui.empty_row(3, "Нет данных.") }}
+    {% endfor %}
+  </tbody>
+</table>
+{% endcall %}
 {% endblock %}

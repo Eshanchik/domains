@@ -2,7 +2,11 @@
 {% import "_components.html" as ui %}
 {% block title %}Импорт — {{ "результат" if committed else "предпросмотр" }} — DomainGuard{% endblock %}
 {% block content %}
-{{ ui.page_header("Импорт — " ~ ("результат" if committed else "предпросмотр")) }}
+<div class="mb-4 flex items-baseline gap-3">
+  <h1 class="page-title">Импорт — {{ "результат" if committed else "предпросмотр" }}</h1>
+  <span class="text-xs" style="color:var(--dim)">// diff</span>
+</div>
+
 <p class="mb-4 flex flex-wrap items-center gap-2 text-sm">
   <span class="muted">Создано:</span> {{ ui.badge(report.created, "green") }}
   <span class="muted">Обновлено:</span> {{ ui.badge(report.updated, "blue") }}
@@ -28,27 +32,27 @@
   <a href="/import" class="btn btn-ghost mb-4">← Назад</a>
 {% endif %}
 
-<div class="card overflow-x-auto">
-  <table class="dg-table">
-    <thead>
-      <tr>
-        <th>Строка</th><th>Домен</th><th>Действие</th><th>Сообщение</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in report.rows %}
-      <tr>
-        <td>{{ r.line }}</td>
-        <td class="font-mono">{{ r.fqdn or '—' }}</td>
-        <td>
-          {% if r.action == 'created' %}{{ ui.badge("создан", "green") }}
-          {% elif r.action == 'updated' %}{{ ui.badge("обновлён", "blue") }}
-          {% else %}{{ ui.badge("ошибка", "red") }}{% endif %}
-        </td>
-        <td class="muted">{{ r.message }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+{% call ui.panel("DIFF") %}
+<table class="dg-table">
+  <thead>
+    <tr>
+      <th>Строка</th><th>Домен</th><th>Действие</th><th>Сообщение</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in report.rows %}
+    <tr>
+      <td>{{ r.line }}</td>
+      <td class="font-mono">{{ r.fqdn or '—' }}</td>
+      <td>
+        {% if r.action == 'created' %}{{ ui.badge("создан", "green") }}
+        {% elif r.action == 'updated' %}{{ ui.badge("обновлён", "blue") }}
+        {% else %}{{ ui.badge("ошибка", "red") }}{% endif %}
+      </td>
+      <td class="muted">{{ r.message }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endcall %}
 {% endblock %}

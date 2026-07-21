@@ -2,36 +2,74 @@
 {% import "_components.html" as ui %}
 {% block title %}{{ domain.fqdn }} — DomainGuard{% endblock %}
 {% block content %}
-{% call ui.page_header(domain.fqdn) %}
-  {% if user.role.value in ("admin", "manager") %}
-    <a href="/domains/{{ domain.id }}/edit" class="btn btn-secondary btn-sm">Изменить</a>
-    <form method="post" action="/domains/{{ domain.id }}/archive">
-      <input type="hidden" name="archived" value="{{ 'false' if not domain.is_active else 'true' }}" />
-      <button type="submit" class="btn btn-secondary btn-sm">
-        {{ 'Вернуть из архива' if not domain.is_active else 'В архив' }}
-      </button>
-    </form>
-  {% endif %}
-{% endcall %}
+<div class="mb-4 flex items-baseline gap-3">
+  <a href="/domains" style="color:var(--dim)">‹ ~/domains</a>
+  <h1 class="page-title" style="color:var(--acc)">{{ domain.fqdn }}</h1>
+</div>
 
-<div class="card card-p mb-6">
-  <dl class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3">
-    <div><dt class="muted">Проект</dt><dd class="mt-0.5 font-medium">{{ project.name if project else domain.project_id }}</dd></div>
-    <div><dt class="muted">TLD</dt><dd class="mt-0.5">{{ domain.tld }}</dd></div>
-    <div><dt class="muted">Punycode</dt><dd class="mt-0.5 font-mono">{{ domain.punycode }}</dd></div>
-    <div><dt class="muted">Истекает</dt><dd class="mt-0.5">{{ domain.expiry_date.strftime('%Y-%m-%d') if domain.expiry_date else '—' }}</dd></div>
-    <div><dt class="muted">Auto-renew</dt><dd class="mt-0.5">{{ {none:'неизвестно', true:'да', false:'нет'}[domain.auto_renew] }}</dd></div>
-    <div><dt class="muted">Активен</dt><dd class="mt-0.5">{% if domain.is_active %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</dd></div>
-    <div><dt class="muted">Nameservers</dt><dd class="mt-0.5 break-words">{{ domain.nameservers | join(', ') or '—' }}</dd></div>
-    <div><dt class="muted">Теги</dt><dd class="mt-0.5">{% for t in domain.tags %}{{ ui.badge(t.name, "gray") }} {% else %}—{% endfor %}</dd></div>
-    <div><dt class="muted">Цена продления</dt><dd class="mt-0.5">{{ domain.renewal_price ~ ' ' ~ domain.renewal_currency if domain.renewal_price else '—' }}</dd></div>
-  </dl>
+<div style="display:grid;grid-template-columns:1.1fr .9fr;gap:14px" class="mb-6">
+  {# ---- DOSSIER ---- #}
+  <div style="min-width:0">
+    {% call ui.panel("DOSSIER") %}
+    <div style="padding:10px 16px;display:grid;grid-template-columns:130px 1fr;row-gap:6px;column-gap:12px;font-size:14px">
+      <span style="color:var(--dim)">domain:</span><span style="color:var(--acc)">{{ domain.fqdn }}</span>
+      <span style="color:var(--dim)">project:</span><span>{{ project.name if project else domain.project_id }}</span>
+      <span style="color:var(--dim)">tld:</span><span>{{ domain.tld }}</span>
+      <span style="color:var(--dim)">punycode:</span><span class="font-mono">{{ domain.punycode }}</span>
+      <span style="color:var(--dim)">expires:</span><span>{{ domain.expiry_date.strftime('%Y-%m-%d') if domain.expiry_date else '—' }}</span>
+      <span style="color:var(--dim)">auto-renew:</span><span>{{ {none:'неизвестно', true:'да', false:'нет'}[domain.auto_renew] }}</span>
+      <span style="color:var(--dim)">активен:</span><span>{% if domain.is_active %}{{ ui.badge("да", "green") }}{% else %}{{ ui.badge("нет", "gray") }}{% endif %}</span>
+      <span style="color:var(--dim)">nameservers:</span><span style="word-break:break-word">{{ domain.nameservers | join(', ') or '—' }}</span>
+      <span style="color:var(--dim)">tags:</span><span>{% for t in domain.tags %}{{ ui.badge(t.name, "gray") }} {% else %}—{% endfor %}</span>
+      <span style="color:var(--dim)">cost:</span><span>{{ domain.renewal_price ~ ' ' ~ domain.renewal_currency if domain.renewal_price else '—' }}</span>
+    </div>
+    {% if user.role.value in ("admin", "manager") %}
+    <div style="display:flex;gap:8px;padding:10px 16px">
+      <a href="/domains/{{ domain.id }}/edit" class="btn btn-secondary btn-sm">Изменить</a>
+      <form method="post" action="/domains/{{ domain.id }}/archive">
+        <input type="hidden" name="archived" value="{{ 'false' if not domain.is_active else 'true' }}" />
+        <button type="submit" class="btn btn-secondary btn-sm">
+          {{ 'Вернуть из архива' if not domain.is_active else 'В архив' }}
+        </button>
+      </form>
+    </div>
+    {% endif %}
+    {% endcall %}
+  </div>
+
+  {# ---- HEALTH-CHECKS + АЛЕРТЫ summary ---- #}
+  <div style="display:grid;gap:14px;align-content:start;min-width:0">
+    {% call ui.panel("HEALTH-CHECKS") %}
+    <div style="padding:8px 16px;display:grid;gap:6px;font-size:14px">
+      {% for hc in healthchecks %}
+      <div class="flex items-center justify-between gap-2">
+        <span class="font-mono text-xs" style="color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ hc.url }}</span>
+        <span class="flex-shrink-0">{{ ui.status_badge(hc.state) }}</span>
+      </div>
+      {% else %}
+      <span style="color:var(--faint)">-- проверок доступности нет --</span>
+      {% endfor %}
+    </div>
+    {% endcall %}
+    {% call ui.panel("АЛЕРТЫ") %}
+    <div style="padding:8px 16px;display:grid;gap:6px;font-size:14px">
+      {% for a in alerts %}
+      <div class="flex items-center gap-2">
+        {{ ui.status_badge(a.severity) }}
+        <span>{{ a.kind }}</span>
+        <span class="text-xs" style="color:var(--dim)">{{ a.fired_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+      {% else %}
+      <span style="color:var(--faint)">-- активных алертов нет --</span>
+      {% endfor %}
+    </div>
+    {% endcall %}
+  </div>
 </div>
 
 {# Health-checks (кастомная доступность) #}
-<section class="mb-6">
-  <h2 class="section-title">Health-checks</h2>
-  <div class="card overflow-x-auto">
+<div class="mb-6">
+{% call ui.panel("Health-checks") %}
     <table class="dg-table">
       <thead>
         <tr>
@@ -60,12 +98,11 @@
         {% endfor %}
       </tbody>
     </table>
-  </div>
 
   {% if user.role.value in ("admin","manager") %}
-  <details class="card card-p mt-3 text-sm">
-    <summary class="cursor-pointer font-medium text-slate-700 dark:text-slate-200">Добавить health-check</summary>
-    <form method="post" action="/domains/{{ domain.id }}/healthchecks" class="mt-4 grid grid-cols-2 gap-3">
+  <details class="text-sm" style="border-top:1px solid var(--bd)">
+    <summary class="cursor-pointer font-medium" style="padding:8px 16px;color:var(--tx)">&gt; Добавить health-check</summary>
+    <form method="post" action="/domains/{{ domain.id }}/healthchecks" class="grid grid-cols-2 gap-3" style="padding:12px 16px">
       <label class="col-span-2"><span class="label">URL</span>
         <input name="url" required placeholder="https://{{ domain.fqdn }}/click?pid=1" class="input input-mono" />
       </label>
@@ -91,15 +128,16 @@
     </form>
   </details>
   {% endif %}
-</section>
+{% endcall %}
+</div>
 
 {# Активные алерты по домену #}
-<section class="mb-6">
-  <h2 class="section-title">Активные алерты</h2>
+<div class="mb-6">
+{% call ui.panel("Активные алерты") %}
   {% if alerts %}
-  <div class="card divide-y divide-slate-100 dark:divide-slate-800">
+  <div>
     {% for a in alerts %}
-    <div class="flex items-center gap-2 px-4 py-2.5 text-sm">
+    <div class="flex items-center gap-2 text-sm" style="padding:10px 16px;{{ '' if loop.first else 'border-top:1px solid var(--bd)' }}">
       {{ ui.status_badge(a.severity) }}
       <span class="font-medium">{{ a.kind }}</span>
       <span class="muted text-xs">{{ a.fired_at.strftime('%Y-%m-%d %H:%M') }}</span>
@@ -107,23 +145,23 @@
     {% endfor %}
   </div>
   {% else %}
-  <p class="text-sm muted">Активных алертов нет.</p>
+  <p class="text-sm muted" style="padding:10px 16px">Активных алертов нет.</p>
   {% endif %}
-</section>
+{% endcall %}
+</div>
 
 {# Платежи #}
-<section class="mb-6">
-  <h2 class="section-title">Платежи</h2>
-  <div class="card overflow-x-auto">
+<div class="mb-6">
+{% call ui.panel("Платежи") %}
     <table class="dg-table">
-      <thead><tr><th>Дата</th><th>Сумма</th><th>Курс→USD</th><th>USD</th><th>Заметка</th></tr></thead>
+      <thead><tr><th>Дата</th><th class="text-right">Сумма</th><th class="text-right">Курс→USD</th><th class="text-right">USD</th><th>Заметка</th></tr></thead>
       <tbody>
         {% for p in payments %}
         <tr>
           <td>{{ p.paid_at.strftime('%Y-%m-%d') }}</td>
-          <td>{{ '%.2f'|format(p.amount) }} {{ p.currency }}</td>
-          <td>{{ '%.4f'|format(p.rate_to_usd) }}</td>
-          <td class="font-medium">{{ '%.2f'|format(p.amount_usd) }}</td>
+          <td class="text-right">{{ '%.2f'|format(p.amount) }} {{ p.currency }}</td>
+          <td class="text-right">{{ '%.4f'|format(p.rate_to_usd) }}</td>
+          <td class="text-right font-medium">{{ '%.2f'|format(p.amount_usd) }}</td>
           <td class="muted">{{ p.note or '—' }}</td>
         </tr>
         {% else %}
@@ -131,11 +169,10 @@
         {% endfor %}
       </tbody>
     </table>
-  </div>
   {% if user.role.value in ("admin","manager") %}
-  <details class="card card-p mt-3 text-sm">
-    <summary class="cursor-pointer font-medium text-slate-700 dark:text-slate-200">Добавить платёж</summary>
-    <form method="post" action="/domains/{{ domain.id }}/payments" class="mt-4 grid grid-cols-2 gap-3">
+  <details class="text-sm" style="border-top:1px solid var(--bd)">
+    <summary class="cursor-pointer font-medium" style="padding:8px 16px;color:var(--tx)">&gt; Добавить платёж</summary>
+    <form method="post" action="/domains/{{ domain.id }}/payments" class="grid grid-cols-2 gap-3" style="padding:12px 16px">
       <label><span class="label">Сумма</span><input name="amount" required class="input" /></label>
       <label><span class="label">Валюта</span><input name="currency" value="USD" class="input" /></label>
       <label><span class="label">Дата</span><input name="paid_at" type="date" class="input" /></label>
@@ -145,12 +182,12 @@
     </form>
   </details>
   {% endif %}
-</section>
+{% endcall %}
+</div>
 
 {# Недавние проверки #}
-<section class="mb-6">
-  <h2 class="section-title">Последние проверки</h2>
-  <div class="card overflow-x-auto">
+<div class="mb-6">
+{% call ui.panel("Последние проверки") %}
     <table class="dg-table">
       <thead><tr><th>Когда</th><th>Тип</th><th>Статус</th></tr></thead>
       <tbody>
@@ -165,13 +202,12 @@
         {% endfor %}
       </tbody>
     </table>
-  </div>
-</section>
+{% endcall %}
+</div>
 
 {# История изменений полей #}
-<section>
-  <h2 class="section-title">История изменений полей</h2>
-  <div class="card overflow-x-auto">
+<div>
+{% call ui.panel("История изменений полей") %}
     <table class="dg-table">
       <thead>
         <tr><th>Когда</th><th>Поле</th><th>Было</th><th>Стало</th><th>Источник</th></tr>
@@ -190,6 +226,6 @@
         {% endfor %}
       </tbody>
     </table>
-  </div>
-</section>
+{% endcall %}
+</div>
 {% endblock %}
