@@ -14,6 +14,8 @@ API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 
 
 class TelegramChannel(NotificationChannel):
+    MAX_LEN = 4096  # Telegram sendMessage hard limit
+
     def __init__(
         self, bot_token: str, chat_id: str, *, client: httpx.AsyncClient | None = None
     ) -> None:
@@ -21,7 +23,7 @@ class TelegramChannel(NotificationChannel):
         self._chat_id = chat_id
         self._client = client
 
-    async def send(self, text: str) -> None:
+    async def _send_one(self, text: str) -> None:
         owns = self._client is None
         client = self._client or httpx.AsyncClient()
         try:
