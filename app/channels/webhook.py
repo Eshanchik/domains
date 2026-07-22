@@ -24,7 +24,7 @@ class _WebhookChannel(NotificationChannel):
     def _is_success(self, status_code: int) -> bool:
         return 200 <= status_code < 300
 
-    async def send(self, text: str) -> None:
+    async def _send_one(self, text: str) -> None:
         owns = self._client is None
         client = self._client or httpx.AsyncClient()
         try:
@@ -48,6 +48,8 @@ class SlackChannel(_WebhookChannel):
 
 
 class DiscordChannel(_WebhookChannel):
+    MAX_LEN = 2000  # Discord webhook "content" hard limit
+
     def _payload(self, text: str) -> dict:
         return {"content": text}
 

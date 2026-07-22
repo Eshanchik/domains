@@ -949,6 +949,20 @@
     health-check'и на реальные домены). Затем — исходный кейс: массово завести
     `{fqdn}/click?pid=1&offer_id=625` на 19 доменов.
 
+## Фаза 11 — фиксы доставки
+
+- [x] **T54. Discord/Telegram: длинные сводки режутся под лимит сообщения.** _(2026-07-22)_
+  Баг с прода: кнопка «Отправить сейчас» для канала GT1 → «Не удалось отправить сводку».
+  В `notification_log` — `webhook status 400: {"content": ["Must be 2000 or fewer in length."]}`.
+  Причина: у Discord лимит **2000** символов на `content`, а сводка GT1 (много доменов) длиннее;
+  Adera слался, т.к. короткая. Каналы не били длинный текст под лимит. Фикс: `channels/base.py`
+  `chunk_message(text, limit)` (режет по границам строк, длинную строку — жёстко) + базовый
+  `NotificationChannel.send` теперь бьёт на части `MAX_LEN` и шлёт по одной через абстрактный
+  `_send_one`; подклассы (`Telegram`/`_Webhook`→Slack/Discord/Generic) переименовали `send`→
+  `_send_one` и объявили `MAX_LEN` (Discord 2000, Telegram 4096; Slack/generic — без лимита).
+  Ретрай оборачивает весь `send` как прежде. Тесты (+4: chunk within/boundaries/hard-split; Discord
+  >2000 → несколько POST, каждый ≤2000). Без миграций. Задеплоено, сводка GT1 ушла в Discord.
+
 ## Backlog / находки
 
 - Точная глубина очередей Dramatiq и латентность проверок в `/metrics` — требуют
