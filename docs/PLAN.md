@@ -909,6 +909,36 @@
     Manager+ мутации вне скоупа → отказ; вживую (создать тест-пользователя со
     скоупом на GT1, залогиниться, убедиться что видно только GT1). ruff+format чисто.
 
+## Фаза 10 — расширение MCP
+
+- [ ] **T53. Больше инструментов MCP: health-checks, редактирование доменов, платежи, структура.**
+  Находка (в проде): у MCP-коннектора нет инструментов для **health-check'ов** —
+  ассистент не мог массово завести HTTP-проверки (напр. `{fqdn}/click?pid=1&offer_id=625`
+  на 19 доменах), только домены/теги/импорт/алерты/запуск rdap-ssl-vt-dns. Плюс не
+  хватало правки полей домена, платежей и создания компаний/проектов. Расширить набор
+  MCP-инструментов, **всё — через существующие сервисы** (scope+аудит автоматом), тем же
+  паттерном `tools.py` (`(session, user, …)`) + тонкие обёртки в `server.py`.
+  Новые инструменты (9), поверх текущих 12:
+  - **Health-checks:** `list_health_checks(domain_id)` (read, scope), `add_health_check(domain_id,
+    url, method?, follow_redirects?, expected_statuses?, location_pattern?, body_substring?,
+    timeout_s?, interval_min?, fail_threshold?)` (Manager+, `net_guard` валидация),
+    `delete_health_check(healthcheck_id)` (Manager+, scope по домену чека),
+    `bulk_add_health_check(domain_ids, url_template, …)` (Manager+, `{fqdn}`-шаблон, применяет
+    **только к доменам в скоупе**, отчёт applied/skipped) — закрывает исходный кейс на 19 доменов.
+  - **Домен:** `update_domain(domain_id, notes?, auto_renew?, expiry_date?, renewal_price?,
+    renewal_currency?, nameservers?, tags?, project_id?)` (Manager+; правит только переданные
+    поля; смена `project_id` — с проверкой **целевого** проекта на scope, как в T52).
+  - **Платежи:** `list_payments(domain_id)` (read, scope), `add_payment(domain_id, amount,
+    currency, note?, rate_override?, paid_at?)` (Manager+, конверсия в USD как в UI).
+  - **Структура (Admin):** `create_company(code, name)`, `create_project(company_id, code, name)`.
+  - Хелперы: `_require_admin`, `_hc_dict`/`_payment_dict`; обновить `INSTRUCTIONS` и `docs/MCP.md`.
+  - DoD: тесты (add/list/delete health-check + отказ вне скоупа; bulk фильтрует по скоупу;
+    update_domain правит поля и блокирует смену проекта вне скоупа; add/list payment;
+    create_company/project только Admin; health-check на чужой домен → отказ); ruff+format
+    чисто; **без миграций** (модели есть); вживую через коннектор claude.ai (завести
+    health-check'и на реальные домены). Затем — исходный кейс: массово завести
+    `{fqdn}/click?pid=1&offer_id=625` на 19 доменов.
+
 ## Backlog / находки
 
 - Точная глубина очередей Dramatiq и латентность проверок в `/metrics` — требуют
