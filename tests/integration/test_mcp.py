@@ -236,9 +236,7 @@ def test_add_health_check_requires_manager(make_user, make_company, make_project
     assert _run(run()) == "denied"
 
 
-def test_add_health_check_out_of_scope_rejected(
-    make_user, make_company, make_project, make_domain
-):
+def test_add_health_check_out_of_scope_rejected(make_user, make_company, make_project, make_domain):
     acme = make_company(code="acme")
     other = make_company(code="other")
     p_other = make_project(other, code="web")
