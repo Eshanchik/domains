@@ -181,6 +181,10 @@ async def run_import(
         if existing is None:
             await _create(session, norm, project_id, row, price, source, actor_id)
             report.rows.append(RowResult(row.line, norm.fqdn, "created"))
+        elif not _project_visible(existing.project_id):
+            # The FQDN already lives in a project outside the caller's scope. Refuse
+            # to mutate it (and don't reveal more than "out of access").
+            report.rows.append(RowResult(row.line, norm.fqdn, "error", "домен вне доступа"))
         else:
             await _update(session, existing, row, price, source)
             report.rows.append(RowResult(row.line, norm.fqdn, "updated"))

@@ -105,7 +105,8 @@ def test_admin_creates_user_and_writes_audit(client, make_user, make_company, ma
             "login": "newbie",
             "password": "password123",
             "role": "manager",
-            "scopes": f"company:{company_id}\nproject:{project_id}",
+            "company_scopes": [company_id],
+            "project_scopes": [project_id],
         },
         follow_redirects=False,
     )
