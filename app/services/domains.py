@@ -366,6 +366,11 @@ async def request_immediate_checks(
 async def bulk_assign_project(
     session: AsyncSession, user: User, ids: list[int], project_id: int, *, actor_id: int
 ) -> int:
+    # Gate the *target* project against the actor's scope: a scoped user must not
+    # move visible domains into a project outside their scope (cross-scope write).
+    allowed = await allowed_project_ids(session, user)
+    if allowed is not None and project_id not in allowed:
+        return 0
     domains = await _load_scoped(session, user, ids)
     for d in domains:
         if d.project_id != project_id:

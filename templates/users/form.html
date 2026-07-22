@@ -45,14 +45,32 @@
     <label for="mcp_allowed" class="label mb-0">Разрешён MCP</label>
     <span class="text-xs muted">(админам — всегда)</span>
   </div>
-  <div>
-    <label class="label" for="scopes">
-      Скоупы (по строке: <code>company:1</code> или <code>project:2</code>)
-    </label>
-    <textarea id="scopes" name="scopes" rows="3" class="textarea input-mono">{% for s in (subject.scopes if editing else []) %}{% if s.company_id %}company:{{ s.company_id }}
-{% endif %}{% if s.project_id %}project:{{ s.project_id }}
-{% endif %}{% endfor %}</textarea>
-  </div>
+  <fieldset>
+    <legend class="label mb-1">Доступ (компании и проекты)</legend>
+    <p class="text-xs muted mb-2">
+      Отметьте <strong>компанию</strong> — пользователь видит все её проекты, домены и алерты.
+      Отметьте отдельный <strong>проект</strong> — доступ только к нему. Ничего не отмечено —
+      пользователь не видит данных (кроме роли admin, которая видит всё).
+    </p>
+    <div class="max-h-72 overflow-y-auto p-2 text-sm" style="border:1px solid var(--bd)">
+      {% for c in companies %}
+        <label class="flex items-center gap-2">
+          <input type="checkbox" name="company_scopes" value="{{ c.id }}" class="checkbox"
+                 {{ "checked" if c.id in scoped_company_ids else "" }} />
+          <span>{{ c.name }} <span class="muted">/{{ c.code }}</span></span>
+        </label>
+        {% for p in projects if p.company_id == c.id %}
+          <label class="flex items-center gap-2 pl-6">
+            <input type="checkbox" name="project_scopes" value="{{ p.id }}" class="checkbox"
+                   {{ "checked" if p.id in scoped_project_ids else "" }} />
+            <span class="muted">{{ p.name }} /{{ p.code }}</span>
+          </label>
+        {% endfor %}
+      {% else %}
+        <p class="muted">Нет компаний.</p>
+      {% endfor %}
+    </div>
+  </fieldset>
   <div class="flex items-center gap-3 pt-1">
     <button type="submit" class="btn btn-primary">Сохранить</button>
     <a href="/users" class="btn btn-ghost">Отмена</a>
