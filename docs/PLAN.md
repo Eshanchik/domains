@@ -911,7 +911,17 @@
 
 ## Фаза 10 — расширение MCP
 
-- [ ] **T53. Больше инструментов MCP: health-checks, редактирование доменов, платежи, структура.**
+- [x] **T53. Больше инструментов MCP: health-checks, редактирование доменов, платежи, структура.** _(2026-07-22)_
+  Сделано (PR #56): +9 инструментов (12→**21**), все через существующие сервисы (scope+аудит),
+  паттерн `tools.py (session, user, …)` + обёртки `server.py`. Health-checks:
+  `list_health_checks`/`add_health_check`/`delete_health_check`/`bulk_add_health_check`
+  (`{fqdn}`-шаблон, только домены в скоупе, отчёт applied/skipped). `update_domain` (правит
+  только переданные поля; смена `project_id` — с проверкой целевого проекта на scope как в T52).
+  `list_payments`/`add_payment` (USD-конверсия/`rate_override`). Admin: `create_company`/
+  `create_project`. Хелперы `_require_admin`/`_domain_in_scope`/`_hc_dict`/`_payment_dict`;
+  `INSTRUCTIONS`+`docs/MCP.md` обновлены. Тесты +9 (~300 всего), ruff чисто, без миграций.
+  **Задеплоено**, вживую 21 инструмент зарегистрирован на проде. Примечание: клиенту claude.ai
+  надо обновить/переподключить коннектор, чтобы новые инструменты появились в списке.
   Находка (в проде): у MCP-коннектора нет инструментов для **health-check'ов** —
   ассистент не мог массово завести HTTP-проверки (напр. `{fqdn}/click?pid=1&offer_id=625`
   на 19 доменах), только домены/теги/импорт/алерты/запуск rdap-ssl-vt-dns. Плюс не
