@@ -63,3 +63,17 @@ def test_ns_change_message():
 def test_location_omitted_when_absent():
     msg = build_message(_event("expiry", payload={"days": 1, "threshold": 7}), _domain())
     assert "📁" not in msg  # no location line without project/company
+
+
+def test_account_shown_in_message():
+    msg = build_message(
+        _event("expiry", payload={"days": 5, "threshold": 7}),
+        _domain(),
+        project="Web",
+        company="ACME",
+        account="Kingbilly",
+    )
+    assert "🏷 Kingbilly" in msg  # which registrar account to act on
+    # Account also renders without project/company context.
+    msg2 = build_message(_event("ssl", payload={"days": 3}), _domain(), account="Olympia")
+    assert "🏷 Olympia" in msg2

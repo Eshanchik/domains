@@ -17,19 +17,50 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.alert import AlertEvent
-from app.models.company import Project
+from app.models.company import Company, Project
 from app.models.domain import Domain
 from app.models.notification import NotificationChannel
+from app.models.registrar import RegistrarAccount
 
 log = logging.getLogger("services.digest")
 
+# Non-expiry sections keep a flat list; expiry is grouped by urgency (see below).
 _SECTIONS = [
-    ("expiry", "⏳", "Истекают домены"),
     ("ssl", "🔒", "Истекает SSL"),
     ("vt_malicious", "🚨", "VirusTotal детекты"),
     ("health_down", "🔴", "Health-check недоступны"),
     ("ns_change", "🛡️", "Смена NS"),
 ]
+
+
+def _expiry_bucket(days: object) -> tuple[int, str, str]:
+    """Map days-until-expiry to an urgency bucket (order, emoji, title)."""
+    if not isinstance(days, int):
+        return (5, "⚪", "срок неизвестен")
+    if days < 0:
+        return (0, "💀", "просрочены")
+    if days <= 7:
+        return (1, "🔴", "≤7 дней")
+    if days <= 30:
+        return (2, "🟠", "8–30 дней")
+    if days <= 60:
+        return (3, "🟡", "31–60 дней")
+    return (4, "⚪", "60+ дней")
+
+
+async def _scope_name(session: AsyncSession, channel: NotificationChannel) -> str:
+    """Human name of the channel's scope for the digest header."""
+    if channel.project_id is not None:
+        return (
+            await session.scalar(select(Project.name).where(Project.id == channel.project_id))
+            or "проект"
+        )
+    if channel.company_id is not None:
+        return (
+            await session.scalar(select(Company.name).where(Company.id == channel.company_id))
+            or "компания"
+        )
+    return "все домены"
 
 
 async def scoped_domain_ids(session: AsyncSession, channel: NotificationChannel) -> set[int] | None:
@@ -50,12 +81,17 @@ async def scoped_domain_ids(session: AsyncSession, channel: NotificationChannel)
 
 
 async def compose_digest(session: AsyncSession, channel: NotificationChannel) -> str | None:
-    """Build the digest text for a channel, or None if there is nothing to report."""
+    """Build the digest text for a channel, or None if there is nothing to report.
+
+    Only **active** (non-archived) domains are included; expiry alerts are grouped by
+    urgency and each line names the registrar account it belongs to.
+    """
     scope = await scoped_domain_ids(session, channel)
     stmt = (
-        select(AlertEvent, Domain.fqdn, Domain.expiry_date)
+        select(AlertEvent, Domain.fqdn, Domain.expiry_date, RegistrarAccount.label)
         .join(Domain, Domain.id == AlertEvent.domain_id)
-        .where(AlertEvent.state == "active")
+        .outerjoin(RegistrarAccount, RegistrarAccount.id == Domain.registrar_account_id)
+        .where(AlertEvent.state == "active", Domain.is_active.is_(True))
     )
     if scope is not None:
         if not scope:
@@ -65,27 +101,52 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
     if not rows:
         return None
 
-    by_kind: dict[str, list[str]] = {}
-    for event, fqdn, expiry in rows:
+    def _acct(label: str | None) -> str:
+        return f" · {label}" if label else ""
+
+    # Expiry alerts: (days, bucket, text) for grouped, sorted output.
+    expiry: list[tuple[int, tuple[int, str, str], str]] = []
+    other: dict[str, list[str]] = {}
+    for event, fqdn, exp_date, acct in rows:
         p = event.payload_json or {}
         if event.kind == "expiry":
-            date = expiry.strftime("%Y-%m-%d") if expiry else "—"
-            label = f"{fqdn} — через {p.get('days')} дн. ({date})"
+            days = p.get("days")
+            date = exp_date.strftime("%Y-%m-%d") if exp_date else "—"
+            sort_key = days if isinstance(days, int) else 9999
+            expiry.append(
+                (sort_key, _expiry_bucket(days), f"{fqdn} — {days} дн. · {date}{_acct(acct)}")
+            )
         elif event.kind == "ssl":
-            label = f"{fqdn} — через {p.get('days')} дн."
+            other.setdefault("ssl", []).append(f"{fqdn} — {p.get('days')} дн.{_acct(acct)}")
         elif event.kind == "vt_malicious":
-            label = f"{fqdn} — {p.get('malicious')} детектов"
+            other.setdefault("vt_malicious", []).append(
+                f"{fqdn} — {p.get('malicious')} детектов{_acct(acct)}"
+            )
         elif event.kind == "health_down":
-            label = f"{fqdn} — недоступен"
+            other.setdefault("health_down", []).append(f"{fqdn} — недоступен{_acct(acct)}")
         elif event.kind == "ns_change":
-            label = f"{fqdn} — сменились NS"
+            other.setdefault("ns_change", []).append(f"{fqdn} — сменились NS{_acct(acct)}")
         else:
-            label = fqdn
-        by_kind.setdefault(event.kind, []).append(label)
+            other.setdefault(event.kind, []).append(f"{fqdn}{_acct(acct)}")
 
-    lines = [f"📋 DomainGuard — активные алерты ({len(rows)})"]
+    scope_name = await _scope_name(session, channel)
+    lines = [f"📋 DomainGuard · {scope_name}", f"Ежедневная сводка — активных алертов: {len(rows)}"]
+
+    if expiry:
+        lines.append(f"\n⏳ Истекают домены ({len(expiry)}):")
+        expiry.sort(key=lambda t: t[0])
+        seen_buckets: dict[int, tuple[str, str]] = {}
+        grouped: dict[int, list[str]] = {}
+        for _, (order, emoji, title), text in expiry:
+            seen_buckets[order] = (emoji, title)
+            grouped.setdefault(order, []).append(text)
+        for order in sorted(grouped):
+            emoji, title = seen_buckets[order]
+            lines.append(f"  {emoji} {title}:")
+            lines.extend(f"    • {t}" for t in grouped[order])
+
     for kind, emoji, title in _SECTIONS:
-        items = by_kind.get(kind)
+        items = other.get(kind)
         if items:
             lines.append(f"\n{emoji} {title} ({len(items)}):")
             lines.extend(f"  • {item}" for item in items)

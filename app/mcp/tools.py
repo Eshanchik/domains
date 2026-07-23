@@ -170,7 +170,7 @@ async def list_alerts(session: AsyncSession, user: User) -> dict:
     stmt = (
         select(AlertEvent, Domain.fqdn)
         .join(Domain, Domain.id == AlertEvent.domain_id)
-        .where(AlertEvent.state == "active")
+        .where(AlertEvent.state == "active", Domain.is_active.is_(True))
         .order_by(AlertEvent.fired_at.desc())
     )
     if allowed is not None:

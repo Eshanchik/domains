@@ -72,7 +72,7 @@ async def alerts_list(
         .join(Domain, Domain.id == AlertEvent.domain_id)
         .join(Project, Project.id == Domain.project_id)
         .join(Company, Company.id == Project.company_id)
-        .where(AlertEvent.state == "active")
+        .where(AlertEvent.state == "active", Domain.is_active.is_(True))
         .order_by(AlertEvent.fired_at.desc())
     )
     if allowed is not None:
@@ -199,7 +199,10 @@ async def alert_notify(
     if found is not None:
         event, domain = found
         project, company = await alerts_svc.domain_location(session, domain)
-        text = alerts_svc.build_message(event, domain, project=project, company=company)
+        account = await alerts_svc.account_label(session, domain)
+        text = alerts_svc.build_message(
+            event, domain, project=project, company=company, account=account
+        )
         for channel in await notif.resolve_channels(session, domain, purpose="instant"):
             if await notif.send_to_channel(session, redis, channel, text):
                 sent += 1
