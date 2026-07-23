@@ -196,6 +196,12 @@ async def set_archived(
     session: AsyncSession, domain: Domain, archived: bool, *, actor_id: int
 ) -> Domain:
     domain.is_active = not archived
+    if archived:
+        # Archiving retires the domain — resolve its active alerts so they stop
+        # showing up in digests and the alerts list.
+        from app.services import alerts as alerts_svc
+
+        await alerts_svc.resolve_domain_alerts(session, domain.id)
     await record_audit(
         session,
         actor_id=actor_id,
@@ -422,8 +428,12 @@ async def bulk_archive(
     session: AsyncSession, user: User, ids: list[int], archived: bool, *, actor_id: int
 ) -> int:
     domains = await _load_scoped(session, user, ids)
+    if archived:
+        from app.services import alerts as alerts_svc
     for d in domains:
         d.is_active = not archived
+        if archived:
+            await alerts_svc.resolve_domain_alerts(session, d.id)
     await record_audit(
         session,
         actor_id=actor_id,

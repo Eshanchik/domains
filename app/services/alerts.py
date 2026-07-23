@@ -98,6 +98,29 @@ async def resolve_event(
     return True
 
 
+async def resolve_domain_alerts(
+    session: AsyncSession, domain_id: int, *, now: datetime | None = None
+) -> int:
+    """Resolve every active alert for a domain (e.g. when it is archived) so stale alerts
+    don't linger in digests/lists. Does NOT commit — the caller owns the transaction."""
+    ts = now or datetime.now(UTC)
+    rows = (
+        (
+            await session.execute(
+                select(AlertEvent).where(
+                    AlertEvent.domain_id == domain_id, AlertEvent.state == "active"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for ev in rows:
+        ev.state = "resolved"
+        ev.resolved_at = ts
+    return len(rows)
+
+
 async def evaluate_expiry(
     session: AsyncSession, domain: Domain, *, now: datetime | None = None
 ) -> list[AlertEvent]:
@@ -248,6 +271,7 @@ def build_message(
     *,
     project: str | None = None,
     company: str | None = None,
+    account: str | None = None,
 ) -> str:
     """A clear, multi-line alert message that renders in Telegram/Discord/webhook.
 
@@ -258,7 +282,13 @@ def build_message(
     threshold = p.get("threshold")
     fqdn = domain.fqdn
     sev = _SEV_LABEL.get(event.severity, event.severity.upper())
-    loc = f"\n📁 {project} · {company}" if project else ""
+    loc = ""
+    if project:
+        loc = f"\n📁 {project} · {company}"
+        if account:
+            loc += f"\n🏷 {account}"
+    elif account:
+        loc = f"\n🏷 {account}"
 
     if event.kind == "expiry":
         date = domain.expiry_date.strftime("%Y-%m-%d") if domain.expiry_date else "—"
@@ -310,9 +340,10 @@ async def dispatch_instant(
         send = lambda cid, text, eid: send_notification.send(cid, text, eid)  # noqa: E731
 
     project, company = await domain_location(session, domain)
+    account = await account_label(session, domain)
     count = 0
     for event in high:
-        text = build_message(event, domain, project=project, company=company)
+        text = build_message(event, domain, project=project, company=company, account=account)
         for channel in channels:
             send(channel.id, text, event.id)
             count += 1
@@ -329,6 +360,18 @@ async def domain_location(session: AsyncSession, domain: Domain) -> tuple[str | 
         )
     ).first()
     return (row[0], row[1]) if row else (None, None)
+
+
+async def account_label(session: AsyncSession, domain: Domain) -> str | None:
+    """Return the registrar-account label the domain belongs to (or None), so an alert
+    says which account to act on."""
+    if domain.registrar_account_id is None:
+        return None
+    from app.models.registrar import RegistrarAccount
+
+    return await session.scalar(
+        select(RegistrarAccount.label).where(RegistrarAccount.id == domain.registrar_account_id)
+    )
 
 
 async def _latest_ssl_valid_to(session: AsyncSession, domain_id: int) -> datetime | None:

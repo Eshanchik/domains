@@ -376,8 +376,11 @@ async def archive_expired(
         )
     domains = list((await session.execute(stmt.order_by(Domain.fqdn))).scalars().all())
     if apply and domains:
+        from app.services import alerts as alerts_svc
+
         for d in domains:
             d.is_active = False
+            await alerts_svc.resolve_domain_alerts(session, d.id)
         await record_audit(
             session,
             actor_id=None,
