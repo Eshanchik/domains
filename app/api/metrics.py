@@ -29,7 +29,9 @@ HTTP_REQUESTS = Counter(
     "http_requests_total", "HTTP requests processed.", ("method", "route", "status")
 )
 HTTP_LATENCY = Histogram(
-    "http_request_duration_seconds", "HTTP request latency in seconds.", ("method", "route", "status")
+    "http_request_duration_seconds",
+    "HTTP request latency in seconds.",
+    ("method", "route", "status"),
 )
 
 
