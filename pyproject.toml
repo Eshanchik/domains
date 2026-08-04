@@ -24,6 +24,7 @@ dependencies = [
     "dnspython>=2.6",
     "pyotp>=2.9",
     "mcp>=1.28",
+    "prometheus-client>=0.20",
 ]
 
 [project.optional-dependencies]

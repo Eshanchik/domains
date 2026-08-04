@@ -7,7 +7,8 @@ role="${1:-api}"
 
 case "$role" in
   api)
-    exec uvicorn app.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}"
+    exec uvicorn app.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}" \
+      --timeout-graceful-shutdown 10
     ;;
   worker)
     exec dramatiq app.workers.checks --processes "${WORKER_PROCESSES:-1}" --threads "${WORKER_THREADS:-4}"
@@ -16,7 +17,8 @@ case "$role" in
     exec python -m app.scheduler.main
     ;;
   mcp)
-    exec uvicorn app.mcp.asgi:app --host "${HOST:-0.0.0.0}" --port "${MCP_PORT:-9000}"
+    exec uvicorn app.mcp.asgi:app --host "${HOST:-0.0.0.0}" --port "${MCP_PORT:-9000}" \
+      --timeout-graceful-shutdown 10
     ;;
   migrate)
     exec alembic upgrade head

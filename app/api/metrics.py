@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Response
+from prometheus_client import Counter, Histogram, generate_latest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +22,17 @@ router = APIRouter(tags=["metrics"])
 
 SERVICES = ("rdap", "whois", "ssl", "vt", "telegram", "namecheap")
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+
+# Standard HTTP instrumentation (recorded by the middleware in app.main). Default
+# process/GC collectors are registered automatically by prometheus_client on import.
+HTTP_REQUESTS = Counter(
+    "http_requests_total", "HTTP requests processed.", ("method", "route", "status")
+)
+HTTP_LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request latency in seconds.",
+    ("method", "route", "status"),
+)
 
 
 def _line(name: str, value, labels: str = "") -> str:
@@ -58,4 +70,6 @@ async def metrics(
         fails = await redis.get(f"cb:{svc}:fails")
         lines.append(_line("dg_circuit_breaker_failures", int(fails or 0), f'{{service="{svc}"}}'))
 
-    return Response("\n".join(lines) + "\n", media_type=CONTENT_TYPE)
+    # App gauges (above) + standard process/HTTP metrics from the default registry.
+    body = "\n".join(lines) + "\n" + generate_latest().decode("utf-8")
+    return Response(body, media_type=CONTENT_TYPE)
