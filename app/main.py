@@ -6,6 +6,8 @@ ASGI server (uvicorn) imports a ready application via ``app.main:app``.
 
 from __future__ import annotations
 
+import time
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -13,9 +15,10 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import health, metrics, v1
+from app.api.metrics import HTTP_LATENCY, HTTP_REQUESTS
 from app.config import settings
 from app.deps import NotAuthenticated
-from app.log import configure_logging
+from app.log import configure_logging, request_id_var
 from app.web import alerts as web_alerts
 from app.web import auth as web_auth
 from app.web import channels as web_channels
@@ -43,6 +46,26 @@ def create_app() -> FastAPI:
         version="0.1.0",
         debug=settings.debug,
     )
+
+    @app.middleware("http")
+    async def _observe(request: Request, call_next):
+        """Attach a request id (for logs) and record HTTP metrics (method/route/status)."""
+        rid = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+        token = request_id_var.set(rid)
+        start = time.perf_counter()
+        status = "500"  # stays 500 if call_next raises before producing a response
+        try:
+            response = await call_next(request)
+            status = str(response.status_code)
+            response.headers["X-Request-ID"] = rid
+            return response
+        finally:
+            request_id_var.reset(token)
+            route = request.scope.get("route")
+            label = getattr(route, "path", "unmatched") if route is not None else "unmatched"
+            elapsed = time.perf_counter() - start
+            HTTP_REQUESTS.labels(request.method, label, status).inc()
+            HTTP_LATENCY.labels(request.method, label, status).observe(elapsed)
 
     # Unauthenticated access to a protected page → redirect to the login screen.
     @app.exception_handler(NotAuthenticated)

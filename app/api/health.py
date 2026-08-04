@@ -16,12 +16,14 @@ from app.db import get_redis, get_session
 router = APIRouter(tags=["health"])
 
 
+@router.get("/health")
 @router.get("/healthz")
 async def healthz() -> dict[str, str]:
     """Liveness probe — always OK if the event loop is running."""
     return {"status": "ok"}
 
 
+@router.get("/ready")
 @router.get("/readyz")
 async def readyz(
     response: Response,

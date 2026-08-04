@@ -89,6 +89,33 @@ uvicorn app.main:app --reload
 | `make fmt` | автоформатирование |
 | `make seed` | демо-данные (появятся с T03) |
 
+## Переменные окружения (12-factor)
+
+Конфигурация — только через env (см. `.env.example`). Секреты **не** коммитятся; в
+деплое они приходят из `.env.sops` (ops-репозиторий).
+
+| Переменная | Обяз. | Секрет | Назначение |
+|---|---|---|---|
+| `ENVIRONMENT` | нет | нет | `production` / `test` / dev |
+| `DEBUG` | нет | нет | режим отладки (по умолч. false) |
+| `TIMEZONE` | нет | нет | таймзона отображения (Europe/Kyiv) |
+| `DATABASE_URL` | **да** | нет¹ | DSN Postgres (async, `postgresql+asyncpg://…`) |
+| `REDIS_URL` | **да** | нет | подключение к Redis |
+| `DG_MASTER_KEY` | **да** | **да** | Fernet-ключ шифрования секретов at-rest |
+| `PUBLIC_BASE_URL` | **да** | нет | публичный https-URL (OAuth/MCP redirect) |
+| `HOST` / `PORT` | нет | нет | bind приложения (по умолч. `0.0.0.0:8000`) |
+| `MCP_PORT` | нет | нет | порт MCP-процесса (по умолч. 9000) |
+| `WORKER_PROCESSES` / `WORKER_THREADS` | нет | нет | параллелизм воркера (1 / 4) |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | да² | пароль — **да** | для контейнера Postgres в стеке |
+| `DG_ADMIN_EMAIL` / `DG_ADMIN_LOGIN` | нет | нет | первый админ (`create-admin`) |
+| `DG_ADMIN_PASSWORD` | нет | **да** | пароль первого админа |
+| `GOOGLE_CLIENT_ID` | нет | нет | вход через Google (пусто → выключено) |
+| `GOOGLE_CLIENT_SECRET` | нет | **да** | секрет OAuth-клиента Google |
+| `GOOGLE_REDIRECT_URI` | нет | нет | redirect URI Google (пусто → из запроса) |
+| `HTTP_PORT` | нет | нет | порт локального nginx (только dev-compose) |
+
+¹ содержит пароль БД — в проде хранить как секрет. ² нужны, только если Postgres поднимается в этом же стеке.
+
 ## Секреты
 
 Секреты (ключи регистраторов/VT/бота) шифруются at-rest (Fernet, мастер-ключ
