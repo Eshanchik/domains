@@ -23,7 +23,7 @@ dependencies = [
     "tzdata>=2024.1",
     "dnspython>=2.6",
     "pyotp>=2.9",
-    "mcp>=1.28",
+    "mcp>=1.28,<2",  # 2.0 убрал mcp.server.fastmcp — импорт в app/mcp/server.py ломается
 ]
 
 [project.optional-dependencies]
