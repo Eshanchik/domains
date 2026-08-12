@@ -3,6 +3,10 @@ name: CI
 on:
   push:
   pull_request:
+  # Exposed as a reusable workflow so build.yml can gate the image on it:
+  # an image that fails its own tests must never reach the registry, where
+  # somebody could pick it in Semaphore.
+  workflow_call:
 
 jobs:
   lint:
