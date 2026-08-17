@@ -423,3 +423,169 @@ def test_edit_requires_admin(client, make_user):
     client.post("/login", data={"login": "v", "password": "password123"})
     aid = _make_account()
     assert client.get(f"/registrars/{aid}/edit", follow_redirects=False).status_code == 403
+
+
+def _login_admin(client, make_user):
+    make_user(login="root", password="password123", role=Role.admin)
+    client.post("/login", data={"login": "root", "password": "password123"})
+
+
+def _make_godaddy() -> int:
+    async def _c() -> int:
+        async with SessionLocal() as s:
+            acc = await svc.create_godaddy_account(
+                s, label="gd", api_key="GKEY", api_secret="GSECRET", actor_id=None
+            )
+            return acc.id
+
+    return _run(_c())
+
+
+def test_update_aborts_on_undecryptable_credentials():
+    """A present-but-undecryptable blob must NOT be overwritten (irreversible loss)."""
+    aid = _make_account()
+
+    async def corrupt():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            acc.credentials_enc = "not-a-valid-fernet-token"
+            await s.commit()
+
+    _run(corrupt())
+
+    async def run():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            try:
+                await svc.update_account(
+                    s, acc, label="x", default_project_id=None,
+                    creds_updates={"client_ip": "9.9.9.9"}, actor_id=None,
+                )
+                return "updated"
+            except svc.CredentialDecryptError:
+                return "aborted"
+
+    assert _run(run()) == "aborted"
+
+    async def blob():
+        async with SessionLocal() as s:
+            return (await s.get(RegistrarAccount, aid)).credentials_enc
+
+    assert _run(blob()) == "not-a-valid-fernet-token"  # original blob preserved
+
+
+def test_update_strips_whitespace():
+    aid = _make_account()
+
+    async def run():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            await svc.update_account(
+                s, acc, label="m", default_project_id=None,
+                creds_updates={"api_key": "  NEWKEY \n", "client_ip": "1.2.3.4"}, actor_id=None,
+            )
+
+    _run(run())
+    assert _creds(aid)["api_key"] == "NEWKEY"
+
+
+def test_update_clears_stale_error():
+    aid = _make_account()
+
+    async def seed_error():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            acc.status = "error"
+            acc.last_error = "boom"
+            await s.commit()
+
+    _run(seed_error())
+
+    async def run():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            await svc.update_account(
+                s, acc, label="m", default_project_id=None,
+                creds_updates={"client_ip": "1.2.3.4"}, actor_id=None,
+            )
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            return acc.status, acc.last_error
+
+    st, le = _run(run())
+    assert st == "ok" and le is None
+
+
+def test_edit_invalid_ip_rejected(client, make_user):
+    _login_admin(client, make_user)
+    aid = _make_account()  # client_ip 1.2.3.4
+    resp = client.post(
+        f"/registrars/{aid}",
+        data={
+            "label": "m",
+            "default_project_id": "",
+            "client_ip": "nope",
+            "api_user": "",
+            "username": "",
+            "api_key": "",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    assert _creds(aid)["client_ip"] == "1.2.3.4"  # unchanged
+
+
+def test_edit_godaddy_keeps_blank_secret(client, make_user):
+    _login_admin(client, make_user)
+    aid = _make_godaddy()
+
+    form = client.get(f"/registrars/{aid}/edit")
+    assert form.status_code == 200
+    assert "api_secret" in form.text
+    assert 'name="client_ip"' not in form.text  # GoDaddy has no Client IP field
+
+    resp = client.post(
+        f"/registrars/{aid}",
+        data={"label": "gd", "default_project_id": "", "api_key": "NEWGKEY", "api_secret": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    creds = _creds(aid)
+    assert creds["api_key"] == "NEWGKEY"  # rotated
+    assert creds["api_secret"] == "GSECRET"  # blank kept the stored secret
+
+
+def test_edit_change_default_project(client, make_user, make_company, make_project):
+    comp = make_company(code="acme")
+    proj = make_project(comp, code="web")
+    _login_admin(client, make_user)
+
+    async def mk() -> int:
+        async with SessionLocal() as s:
+            acc = await svc.create_namecheap_account(
+                s, label="m", api_user="u", api_key="K", username="u", client_ip="1.2.3.4",
+                actor_id=None, default_project_id=proj,
+            )
+            return acc.id
+
+    aid = _run(mk())
+    client.post(
+        f"/registrars/{aid}",
+        data={"label": "m", "default_project_id": "", "client_ip": "1.2.3.4"},
+        follow_redirects=False,
+    )
+
+    async def get_dp():
+        async with SessionLocal() as s:
+            return (await s.get(RegistrarAccount, aid)).default_project_id
+
+    assert _run(get_dp()) is None  # moved back to unassigned
+
+
+def test_edit_missing_account_redirects(client, make_user):
+    _login_admin(client, make_user)
+    assert client.get("/registrars/999999/edit", follow_redirects=False).status_code == 303
+    assert (
+        client.post("/registrars/999999", data={"label": "x"}, follow_redirects=False).status_code
+        == 303
+    )

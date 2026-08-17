@@ -4,6 +4,7 @@
 {% block content %}
 <div class="max-w-lg">
 {% call ui.panel("Изменить аккаунт: " ~ account.label) %}
+<div style="padding:16px 18px 0">{{ ui.flash(error) }}</div>
 <form method="post" action="/registrars/{{ account.id }}" class="space-y-4" style="padding:16px 18px">
   <p class="text-xs muted">
     Регистратор: <strong>{{ connector_type }}</strong>. Поля ключей оставьте

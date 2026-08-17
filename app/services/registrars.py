@@ -137,6 +137,15 @@ async def create_godaddy_account(
 _SECRET_KEYS = ("api_key", "api_secret", "api_user", "username")
 
 
+class CredentialDecryptError(Exception):
+    """Existing credentials could not be decrypted — refuse to overwrite them.
+
+    Guards against destroying a still-present-but-unreadable secret blob (e.g. when the
+    process runs with a mismatched ``DG_MASTER_KEY``): overwriting it with a re-encrypted
+    empty dict would be irreversible.
+    """
+
+
 async def account_connector_type(session: AsyncSession, account: RegistrarAccount) -> str:
     """Return the account's connector type (``namecheap`` / ``godaddy``)."""
     registrar = await session.get(Registrar, account.registrar_id)
@@ -162,15 +171,22 @@ async def update_account(
     if account.credentials_enc:
         try:
             creds = json.loads(crypto.decrypt(account.credentials_enc))
-        except (crypto.CryptoError, json.JSONDecodeError):
-            creds = {}
+        except (crypto.CryptoError, json.JSONDecodeError) as exc:
+            # Never overwrite an existing (but currently-undecryptable) secret blob with
+            # an empty one — that would irreversibly destroy the stored credentials.
+            raise CredentialDecryptError(str(exc)) from exc
     for key, value in creds_updates.items():
-        if value is not None and str(value).strip() != "":
-            creds[key] = value
+        cleaned = "" if value is None else str(value).strip()  # trim copy-paste whitespace
+        if cleaned:
+            creds[key] = cleaned
 
     account.label = label
     account.default_project_id = default_project_id
     account.credentials_enc = crypto.encrypt(json.dumps(creds))
+    # Reconfigured → clear the stale sync error so the row stops showing red; the next
+    # sync re-verifies and flips it back to error if the new settings are still wrong.
+    account.status = "ok"
+    account.last_error = None
 
     diff: dict[str, object] = {"label": label}
     if "client_ip" in creds:  # non-secret — safe to record
