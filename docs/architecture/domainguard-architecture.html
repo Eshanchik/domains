@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="ru" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DomainGuard — Архитектура</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html, body { background: #0b0e14; }
+  .node-box { cursor: pointer; transition: opacity .2s ease; }
+  .node-box rect { transition: stroke .2s ease, filter .2s ease; }
+  .edge-path { transition: stroke .2s ease, stroke-opacity .2s ease, stroke-width .2s ease; }
+  .edge-label { transition: opacity .2s ease; }
+  .dim { opacity: .16; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { filter: drop-shadow(0 0 0 rgba(255,255,255,0)); } 50% { filter: drop-shadow(0 0 10px currentColor); } }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  .step-item { transition: background .15s ease, border-color .15s ease; }
+</style>
+</head>
+<body class="text-slate-200 font-sans antialiased">
+<div class="max-w-[1500px] mx-auto px-4 py-6">
+
+  <!-- Header -->
+  <header class="flex flex-wrap items-end justify-between gap-4 mb-5">
+    <div>
+      <h1 class="text-2xl font-bold text-white flex items-center gap-2">🛡️ DomainGuard — Архитектура</h1>
+      <p class="text-slate-400 text-sm mt-1">Интерактивная карта сервиса. Кликни узел — детали. Выбери поток — подсветка пути и шаги.</p>
+    </div>
+    <div class="text-xs text-slate-500 font-mono text-right leading-5">
+      FastAPI · SQLAlchemy async · Postgres 16 · Redis 7<br>Dramatiq · nginx · Docker Compose
+    </div>
+  </header>
+
+  <div class="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+
+    <!-- Diagram -->
+    <section class="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-slate-800">
+        <div id="legend" class="flex flex-wrap gap-x-4 gap-y-1 text-[11px]"></div>
+        <button id="resetBtn" class="text-xs px-2.5 py-1 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800">Сбросить</button>
+      </div>
+      <div class="p-1">
+        <svg id="svg" viewBox="0 0 1360 760" class="w-full block" style="height:auto;"></svg>
+      </div>
+    </section>
+
+    <!-- Side panel -->
+    <aside class="flex flex-col gap-4">
+
+      <!-- Flows -->
+      <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+        <h2 class="text-sm font-semibold text-white mb-2 flex items-center gap-2">🔀 Потоки (Flows)</h2>
+        <div id="flowButtons" class="flex flex-col gap-1.5"></div>
+      </div>
+
+      <!-- Detail / steps -->
+      <div id="detail" class="rounded-xl border border-slate-800 bg-slate-900/40 p-4 flex-1 min-h-[240px]">
+        <p class="text-slate-500 text-sm">Выбери узел или поток, чтобы увидеть подробности.</p>
+      </div>
+
+    </aside>
+  </div>
+
+  <footer class="text-center text-xs text-slate-600 mt-6">
+    Self-contained · данные встроены (см. также <span class="font-mono">domainguard-architecture.json</span>)
+  </footer>
+</div>
+
+<script>
+/* ---------- DATA (single source of truth, mirrors the JSON) ---------- */
+const GROUPS = {
+  client: { name: "Клиент",      color: "#38bdf8" },
+  edge:   { name: "Edge",        color: "#a78bfa" },
+  app:    { name: "Приложение",  color: "#34d399" },
+  logic:  { name: "Логика",      color: "#fbbf24" },
+  proc:   { name: "Обработка",   color: "#fb923c" },
+  data:   { name: "Хранилище",   color: "#fb7185" },
+  ext:    { name: "Внешние",     color: "#94a3b8" },
+};
+
+const NODES = [
+  { id:"browser",      label:"Браузер",              sub:"Пользователь (UI)",        group:"client", x:70,  y:120, files:["templates/*"] },
+  { id:"claude",       label:"claude.ai / MCP",      sub:"AI-ассистент",             group:"client", x:70,  y:330, files:[] },
+  { id:"nginx",        label:"nginx",                sub:"TLS · reverse proxy",      group:"edge",   x:270, y:225, files:["docker/nginx/prod.conf"] },
+  { id:"api",          label:"api (FastAPI)",        sub:"Web UI + REST /api/v1",    group:"app",    x:480, y:95,  files:["app/main.py","app/web/","app/api/"] },
+  { id:"mcp",          label:"mcp",                  sub:"MCP server · 21 tools",    group:"app",    x:480, y:320, files:["app/mcp/server.py","app/mcp/tools.py"] },
+  { id:"scheduler",    label:"scheduler",            sub:"Планировщик",              group:"app",    x:480, y:560, files:["app/scheduler/service.py"] },
+  { id:"services",     label:"Сервисный слой",       sub:"бизнес-логика",            group:"logic",  x:710, y:175, files:["app/services/"] },
+  { id:"worker",       label:"worker",               sub:"Dramatiq акторы",          group:"logic",  x:710, y:470, files:["app/workers/checks.py"] },
+  { id:"alerts",       label:"Движок алертов",       sub:"AlertEvent · дедуп",       group:"logic",  x:710, y:640, files:["app/services/alerts.py"] },
+  { id:"checks",       label:"Проверки",             sub:"rdap·ssl·vt·dns·health",   group:"proc",   x:940, y:400, files:["app/checks/"] },
+  { id:"connectors",   label:"Коннекторы",           sub:"Namecheap · GoDaddy",      group:"proc",   x:940, y:520, files:["app/connectors/"] },
+  { id:"channels",     label:"Каналы",               sub:"TG·Discord·Slack·webhook", group:"proc",   x:940, y:640, files:["app/channels/"] },
+  { id:"postgres",     label:"PostgreSQL 16",        sub:"данные + история",         group:"data",   x:1160,y:130, files:["app/models/","alembic/"] },
+  { id:"redis",        label:"Redis 7",              sub:"очередь·кэш·сессии",       group:"data",   x:1160,y:285, files:["app/db.py"] },
+  { id:"rdapAPI",      label:"RDAP/WHOIS/VT/DNS",    sub:"внешние сервисы",          group:"ext",    x:1160,y:430, files:[] },
+  { id:"registrarAPI", label:"Registrar API",        sub:"Namecheap · GoDaddy",      group:"ext",    x:1160,y:545, files:[] },
+  { id:"telegram",     label:"Telegram/Discord",     sub:"доставка",                 group:"ext",    x:1160,y:660, files:[] },
+];
+
+const EDGES = [
+  ["browser","nginx","HTTPS"], ["claude","nginx","MCP/OAuth"],
+  ["nginx","api","proxy"], ["nginx","mcp","proxy /mcp"],
+  ["api","services","вызов"], ["mcp","services","tools"],
+  ["scheduler","services","digest/retention"], ["scheduler","redis","enqueue"],
+  ["redis","worker","очередь"], ["worker","services","запись"],
+  ["worker","checks","run_check"], ["worker","connectors","sync"],
+  ["worker","alerts","evaluate"], ["alerts","channels","instant"],
+  ["services","channels","send"], ["services","postgres","SQL"],
+  ["services","redis","cache/session"], ["checks","rdapAPI","RDAP/VT/DNS"],
+  ["connectors","registrarAPI","API"], ["channels","telegram","bot/webhook"],
+];
+
+const FLOWS = [
+  { id:"expiry", name:"Проверка истечения → алерт", color:"#f472b6", desc:"Плановая проверка домена и мгновенный алерт при пересечении порога.", steps:[
+    ["scheduler","Находит домены с наступившим next_check_at, ставит run_check в очередь (джиттер, locks)"],
+    ["redis","Задача попадает в очередь Dramatiq"],
+    ["worker","Забирает run_check, диспатчит по типу (rdap → expiry)"],
+    ["checks","checks/rdap: RDAP-запрос (fallback WHOIS) через токен-бакет + retry + circuit breaker"],
+    ["rdapAPI","Внешний RDAP/WHOIS отвечает датой истечения, статусами, NS"],
+    ["postgres","Пишется check_result (партиция по месяцу), домен обновляется (source=rdap, manual не перетирается)"],
+    ["alerts","Оценка порогов 60/30/14/7/1 → AlertEvent с дедуп-ключом (не спамит)"],
+    ["channels","High (≤7 дн) → резолв каналов домена (проект→компания→global), мгновенная отправка"],
+    ["telegram","Доставка; при сбое — retry, при ошибке — stale, воркер не падает"],
+  ]},
+  { id:"dashboard", name:"Просмотр дашборда (UI)", color:"#38bdf8", desc:"Данные фильтруются по роли и скоупу пользователя.", steps:[
+    ["browser","GET / с сессионной cookie"],
+    ["nginx","TLS-терминация, проксирование на api"],
+    ["api","web/auth.home; проверка сессии и роли"],
+    ["services","dashboard.build_overview — агрегаты в рамках allowed_project_ids"],
+    ["redis","Проверка серверной сессии"],
+    ["postgres","Агрегатные запросы (счётчики, разбивка по компаниям)"],
+  ]},
+  { id:"sync", name:"Синк регистратора", color:"#fb923c", desc:"Периодический/ручной импорт доменов из Namecheap/GoDaddy.", steps:[
+    ["scheduler","Каждые ~6ч ставит sync_registrar_account (или ручной запуск из UI)"],
+    ["redis","Задача синка в очереди"],
+    ["worker","Забирает sync_registrar_account"],
+    ["connectors","namecheap/godaddy: getList (пагинация), auto-renew, цены; GoDaddy — только ACTIVE"],
+    ["registrarAPI","Внешний API регистратора отдаёт домены"],
+    ["services","registrars.sync_account: upsert, manual-safe; новый домен → проект по умолчанию или «Неразобранные»"],
+    ["postgres","Домены/аккаунты сохраняются (креды шифруются Fernet)"],
+  ]},
+  { id:"digest", name:"Ежедневная сводка", color:"#34d399", desc:"В digest_time собирается сводка активных алертов и отправляется.", steps:[
+    ["scheduler","В минуту digest_time (Kyiv) выбирает каналы digest/both; идемпотентность через Redis SET NX"],
+    ["services","digest.compose_digest: активные алерты по скоупу, только is_active, группировка по срочности + аккаунт"],
+    ["postgres","Чтение AlertEvent + Domain + RegistrarAccount"],
+    ["redis","send_notification ставится в очередь"],
+    ["worker","Актор send_notification выполняет доставку"],
+    ["channels","chunk_message: текст бьётся под лимит (Discord 2000 / Telegram 4096)"],
+    ["telegram","Сводка доставляется; результат — в notification_log"],
+  ]},
+  { id:"mcp", name:"MCP-вызов инструмента", color:"#a78bfa", desc:"Роль/скоуп берутся от владельца токена, мутации идут в аудит.", steps:[
+    ["claude","Вызов tool (OAuth-токен или dg_ API-токен)"],
+    ["nginx","Проксирует /mcp на контейнер mcp (SSE)"],
+    ["mcp","load_access_token → acting_user; обёртка вызывает tools.*"],
+    ["services","Те же сервисы, что и UI → скоуп + аудит автоматически; мутации требуют Manager+"],
+    ["postgres","Чтение/запись + AuditLog от имени владельца токена"],
+  ]},
+  { id:"health", name:"Health-check", color:"#fbbf24", desc:"HTTP-проверка URL со state-машиной up/down и SSRF-защитой.", steps:[
+    ["scheduler","Ставит run_healthcheck для созревших проверок"],
+    ["redis","Задача в очереди"],
+    ["worker","Забирает run_healthcheck"],
+    ["checks","net_guard.validate_public_url (SSRF), GET/HEAD, статус + Location + подстрока в теле"],
+    ["alerts","State-машина: N неудач подряд → down, восстановление → recovered"],
+    ["channels","health_down (high) — мгновенная доставка"],
+    ["telegram","Уведомление о недоступности"],
+  ]},
+  { id:"auth", name:"Вход + 2FA", color:"#fb7185", desc:"argon2, брутфорс-защита, серверная сессия, опциональный TOTP.", steps:[
+    ["browser","POST /login (логин, пароль, при 2FA — код)"],
+    ["nginx","Edge rate-limit на /login, проксирование на api"],
+    ["api","web/auth.login"],
+    ["services","auth.authenticate: argon2, login_guard (5/15мин), TOTP verify"],
+    ["redis","Счётчик попыток + серверная сессия (cookie httponly/lax)"],
+  ]},
+];
+
+/* ---------- Rendering ---------- */
+const SVG_NS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("svg");
+const nodeById = Object.fromEntries(NODES.map(n => [n.id, n]));
+const NW = 168, NH = 56;
+let activeFlow = null;
+
+function el(tag, attrs = {}, parent = svg) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  parent.appendChild(e);
+  return e;
+}
+function center(n){ return { x: n.x + NW/2, y: n.y + NH/2 }; }
+// point on node rect border toward (tx,ty)
+function border(n, tx, ty){
+  const c = center(n), dx = tx - c.x, dy = ty - c.y, hw = NW/2, hh = NH/2;
+  const sx = dx === 0 ? Infinity : hw/Math.abs(dx), sy = dy === 0 ? Infinity : hh/Math.abs(dy);
+  const s = Math.min(sx, sy);
+  return { x: c.x + dx*s, y: c.y + dy*s };
+}
+
+// defs: arrow markers (default + highlight)
+const defs = el("defs");
+function marker(id, color){
+  const m = el("marker", { id, viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"7", markerHeight:"7", orient:"auto-start-reverse" }, defs);
+  el("path", { d:"M0,0 L10,5 L0,10 z", fill: color }, m);
+}
+marker("arrow", "#334155");
+
+// edges layer then nodes layer (nodes on top)
+const edgeLayer = el("g");
+const nodeLayer = el("g");
+const edgeEls = [];
+
+EDGES.forEach(([from, to, label]) => {
+  const a = nodeById[from], b = nodeById[to];
+  const ca = center(a), cb = center(b);
+  const p1 = border(a, cb.x, cb.y), p2 = border(b, ca.x, ca.y);
+  const mx = (p1.x + p2.x)/2, my = (p1.y + p2.y)/2 - 18;
+  const path = el("path", {
+    d:`M ${p1.x} ${p1.y} Q ${mx} ${my} ${p2.x} ${p2.y}`,
+    fill:"none", stroke:"#334155", "stroke-width":"1.6",
+    "marker-end":"url(#arrow)", class:"edge-path"
+  }, edgeLayer);
+  const lbl = el("text", { x:mx, y:my-2, "text-anchor":"middle", fill:"#64748b", "font-size":"9.5", class:"edge-label" }, edgeLayer);
+  lbl.textContent = label;
+  edgeEls.push({ from, to, path, lbl });
+});
+
+const nodeEls = {};
+NODES.forEach(n => {
+  const g = el("g", { class:"node-box", "data-id":n.id }, nodeLayer);
+  const color = GROUPS[n.group].color;
+  el("rect", { x:n.x, y:n.y, width:NW, height:NH, rx:10, fill:"#0f172a", stroke:color, "stroke-width":"1.6" }, g);
+  const t1 = el("text", { x:n.x+12, y:n.y+23, fill:"#f1f5f9", "font-size":"13", "font-weight":"600" }, g); t1.textContent = n.label;
+  const t2 = el("text", { x:n.x+12, y:n.y+41, fill:"#94a3b8", "font-size":"10.5" }, g); t2.textContent = n.sub;
+  g.addEventListener("click", () => showNode(n.id));
+  nodeEls[n.id] = g;
+});
+
+/* ---------- Legend ---------- */
+const legend = document.getElementById("legend");
+Object.values(GROUPS).forEach(g => {
+  const s = document.createElement("span");
+  s.className = "inline-flex items-center gap-1.5 text-slate-400";
+  s.innerHTML = `<span class="inline-block w-2.5 h-2.5 rounded-sm" style="background:${g.color}"></span>${g.name}`;
+  legend.appendChild(s);
+});
+
+/* ---------- Flow buttons ---------- */
+const flowButtons = document.getElementById("flowButtons");
+FLOWS.forEach(f => {
+  const b = document.createElement("button");
+  b.className = "text-left text-sm px-3 py-2 rounded-lg border border-slate-700/70 hover:bg-slate-800/60 flex items-center gap-2";
+  b.dataset.flow = f.id;
+  b.innerHTML = `<span class="inline-block w-2.5 h-2.5 rounded-full shrink-0" style="background:${f.color}"></span><span>${f.name}</span>`;
+  b.addEventListener("click", () => selectFlow(f.id));
+  flowButtons.appendChild(b);
+});
+
+/* ---------- Interactions ---------- */
+const detail = document.getElementById("detail");
+
+function clearHighlight(){
+  Object.values(nodeEls).forEach(g => { g.classList.remove("dim","pulse"); g.style.color=""; g.querySelector("rect").setAttribute("stroke-width","1.6"); });
+  edgeEls.forEach(e => {
+    e.path.classList.remove("dim");
+    e.path.setAttribute("stroke", "#334155");
+    e.path.setAttribute("stroke-width", "1.6");
+    e.path.setAttribute("marker-end", "url(#arrow)");
+    e.lbl.classList.remove("dim");
+  });
+}
+
+function setFlowButtonsActive(id){
+  flowButtons.querySelectorAll("button").forEach(b => {
+    const on = b.dataset.flow === id;
+    b.style.background = on ? "rgba(51,65,85,.6)" : "";
+    b.style.borderColor = on ? (FLOWS.find(f=>f.id===id).color) : "";
+  });
+}
+
+function showNode(id){
+  const n = nodeById[id];
+  const usedIn = FLOWS.filter(f => f.steps.some(s => s[0] === id)).map(f => f.name);
+  detail.innerHTML = `
+    <div class="flex items-center gap-2 mb-1">
+      <span class="inline-block w-3 h-3 rounded-sm" style="background:${GROUPS[n.group].color}"></span>
+      <h3 class="text-base font-semibold text-white">${n.label}</h3>
+    </div>
+    <p class="text-slate-400 text-sm">${n.sub} · <span class="text-slate-500">${GROUPS[n.group].name}</span></p>
+    ${n.files.length ? `<div class="mt-3"><div class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Файлы</div>
+      <div class="flex flex-wrap gap-1.5">${n.files.map(f=>`<code class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300">${f}</code>`).join("")}</div></div>` : ""}
+    ${usedIn.length ? `<div class="mt-3"><div class="text-[11px] uppercase tracking-wide text-slate-500 mb-1">Участвует в потоках</div>
+      <ul class="text-sm text-slate-300 list-disc list-inside space-y-0.5">${usedIn.map(u=>`<li>${u}</li>`).join("")}</ul></div>` : ""}
+  `;
+  // brief emphasis without touching a full flow
+  clearHighlight();
+  if (activeFlow) selectFlow(activeFlow, true); // keep flow highlight if any
+  const g = nodeEls[id]; g.querySelector("rect").setAttribute("stroke-width","3");
+}
+
+function selectFlow(id, keepDetail){
+  activeFlow = id;
+  const flow = FLOWS.find(f => f.id === id);
+  const nodeSet = new Set(flow.steps.map(s => s[0]));
+  setFlowButtonsActive(id);
+  clearHighlight();
+
+  // dim everything, then light the path
+  Object.entries(nodeEls).forEach(([nid, g]) => { if (!nodeSet.has(nid)) g.classList.add("dim"); });
+  edgeEls.forEach(e => {
+    const on = nodeSet.has(e.from) && nodeSet.has(e.to);
+    if (on) {
+      e.path.setAttribute("stroke", flow.color);
+      e.path.setAttribute("stroke-width", "2.6");
+      e.path.setAttribute("marker-end", "url(#arrow)");
+      e.lbl.setAttribute("fill", "#cbd5e1");
+    } else { e.path.classList.add("dim"); e.lbl.classList.add("dim"); }
+  });
+  nodeSet.forEach(nid => nodeEls[nid].querySelector("rect").setAttribute("stroke-width","2.6"));
+
+  if (keepDetail) return;
+  renderSteps(flow);
+}
+
+function renderSteps(flow){
+  detail.innerHTML = `
+    <div class="flex items-center gap-2 mb-1">
+      <span class="inline-block w-3 h-3 rounded-full" style="background:${flow.color}"></span>
+      <h3 class="text-base font-semibold text-white">${flow.name}</h3>
+    </div>
+    <p class="text-slate-400 text-sm mb-3">${flow.desc}</p>
+    <ol id="stepList" class="space-y-1.5"></ol>`;
+  const ol = document.getElementById("stepList");
+  flow.steps.forEach((s, i) => {
+    const n = nodeById[s[0]];
+    const li = document.createElement("li");
+    li.className = "step-item flex gap-2.5 p-2 rounded-lg border border-slate-800 hover:border-slate-600 cursor-pointer";
+    li.innerHTML = `
+      <span class="shrink-0 w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold" style="background:${flow.color}22;color:${flow.color};border:1px solid ${flow.color}66">${i+1}</span>
+      <div>
+        <div class="text-sm font-medium text-slate-100 flex items-center gap-1.5">
+          <span class="inline-block w-2 h-2 rounded-sm" style="background:${GROUPS[n.group].color}"></span>${n.label}
+        </div>
+        <div class="text-[12.5px] text-slate-400 leading-snug">${s[1]}</div>
+      </div>`;
+    li.addEventListener("mouseenter", () => pulseNode(s[0]));
+    li.addEventListener("mouseleave", () => unpulse(s[0]));
+    ol.appendChild(li);
+  });
+}
+
+function pulseNode(id){ const g = nodeEls[id]; g.classList.remove("dim"); g.classList.add("pulse"); g.style.color = (FLOWS.find(f=>f.id===activeFlow)||{}).color || "#fff"; }
+function unpulse(id){ nodeEls[id].classList.remove("pulse"); }
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  activeFlow = null; clearHighlight(); setFlowButtonsActive(null);
+  detail.innerHTML = `<p class="text-slate-500 text-sm">Выбери узел или поток, чтобы увидеть подробности.</p>`;
+});
+</script>
+</body>
+</html>

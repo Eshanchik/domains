@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% import "_components.html" as ui %}
+{% block title %}Изменить аккаунт — DomainGuard{% endblock %}
+{% block content %}
+<div class="max-w-lg">
+{% call ui.panel("Изменить аккаунт: " ~ account.label) %}
+<div style="padding:16px 18px 0">{{ ui.flash(error) }}</div>
+<form method="post" action="/registrars/{{ account.id }}" class="space-y-4" style="padding:16px 18px">
+  <p class="text-xs muted">
+    Регистратор: <strong>{{ connector_type }}</strong>. Поля ключей оставьте
+    <strong>пустыми</strong>, чтобы сохранить текущие значения.
+  </p>
+
+  <div>
+    <label class="label" for="label">Метка</label>
+    <input id="label" name="label" required value="{{ account.label }}" class="input" />
+  </div>
+
+  <div>
+    <label class="label" for="default_project_id">Проект по умолчанию</label>
+    <select id="default_project_id" name="default_project_id" class="select">
+      <option value="">— в «неразобранные» —</option>
+      {% for p in projects %}
+        <option value="{{ p.id }}" {{ "selected" if account.default_project_id == p.id else "" }}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {% if connector_type == "godaddy" %}
+    <div>
+      <label class="label" for="api_key">API Key (пусто — не менять)</label>
+      <input id="api_key" name="api_key" class="input" autocomplete="off" placeholder="•••••• оставить как есть" />
+    </div>
+    <div>
+      <label class="label" for="api_secret">API Secret (пусто — не менять)</label>
+      <input id="api_secret" name="api_secret" type="password" class="input" autocomplete="off" placeholder="•••••• оставить как есть" />
+    </div>
+  {% else %}
+    <div>
+      <label class="label" for="client_ip">Client IP (whitelisted в Namecheap)</label>
+      <input id="client_ip" name="client_ip" value="{{ client_ip }}" class="input input-mono" />
+    </div>
+    <div>
+      <label class="label" for="api_user">ApiUser (пусто — не менять)</label>
+      <input id="api_user" name="api_user" class="input" autocomplete="off" placeholder="оставить как есть" />
+    </div>
+    <div>
+      <label class="label" for="username">UserName (пусто — не менять)</label>
+      <input id="username" name="username" class="input" autocomplete="off" placeholder="оставить как есть" />
+    </div>
+    <div>
+      <label class="label" for="api_key">ApiKey (пусто — не менять)</label>
+      <input id="api_key" name="api_key" type="password" class="input" autocomplete="off" placeholder="•••••• оставить как есть" />
+    </div>
+  {% endif %}
+
+  <div class="flex items-center gap-3 pt-1">
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/registrars" class="btn btn-ghost">Отмена</a>
+  </div>
+</form>
+{% endcall %}
+</div>
+{% endblock %}

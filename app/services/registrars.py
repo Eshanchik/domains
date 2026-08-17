@@ -133,6 +133,80 @@ async def create_godaddy_account(
     )
 
 
+# Credential fields to report as "rotated" in the audit (names only, never values).
+_SECRET_KEYS = ("api_key", "api_secret", "api_user", "username")
+
+
+class CredentialDecryptError(Exception):
+    """Existing credentials could not be decrypted — refuse to overwrite them.
+
+    Guards against destroying a still-present-but-unreadable secret blob (e.g. when the
+    process runs with a mismatched ``DG_MASTER_KEY``): overwriting it with a re-encrypted
+    empty dict would be irreversible.
+    """
+
+
+async def account_connector_type(session: AsyncSession, account: RegistrarAccount) -> str:
+    """Return the account's connector type (``namecheap`` / ``godaddy``)."""
+    registrar = await session.get(Registrar, account.registrar_id)
+    return registrar.connector_type if registrar and registrar.connector_type else "namecheap"
+
+
+async def update_account(
+    session: AsyncSession,
+    account: RegistrarAccount,
+    *,
+    label: str,
+    default_project_id: int | None,
+    creds_updates: dict[str, str],
+    actor_id: int,
+) -> RegistrarAccount:
+    """Update an account's label, default project and (optionally) credentials/IP.
+
+    Values in ``creds_updates`` that are blank are ignored, so leaving a credential
+    field empty keeps the stored secret. The merged creds are re-encrypted. Secret
+    values are never written to the audit log — only which fields were rotated.
+    """
+    creds: dict[str, str] = {}
+    if account.credentials_enc:
+        try:
+            creds = json.loads(crypto.decrypt(account.credentials_enc))
+        except (crypto.CryptoError, json.JSONDecodeError) as exc:
+            # Never overwrite an existing (but currently-undecryptable) secret blob with
+            # an empty one — that would irreversibly destroy the stored credentials.
+            raise CredentialDecryptError(str(exc)) from exc
+    for key, value in creds_updates.items():
+        cleaned = "" if value is None else str(value).strip()  # trim copy-paste whitespace
+        if cleaned:
+            creds[key] = cleaned
+
+    account.label = label
+    account.default_project_id = default_project_id
+    account.credentials_enc = crypto.encrypt(json.dumps(creds))
+    # Reconfigured → clear the stale sync error so the row stops showing red; the next
+    # sync re-verifies and flips it back to error if the new settings are still wrong.
+    account.status = "ok"
+    account.last_error = None
+
+    diff: dict[str, object] = {"label": label}
+    if "client_ip" in creds:  # non-secret — safe to record
+        diff["client_ip"] = creds["client_ip"]
+    rotated = sorted(k for k in _SECRET_KEYS if str(creds_updates.get(k, "")).strip())
+    if rotated:
+        diff["rotated"] = rotated  # field names only, never values
+    await record_audit(
+        session,
+        actor_id=actor_id,
+        action="update",
+        entity_type="registrar_account",
+        entity_id=account.id,
+        diff=diff,
+    )
+    await session.commit()
+    await session.refresh(account)
+    return account
+
+
 async def delete_account(
     session: AsyncSession, account: RegistrarAccount, *, actor_id: int
 ) -> None:

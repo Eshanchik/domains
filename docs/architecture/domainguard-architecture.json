@@ -1,0 +1,150 @@
+{
+  "service": "DomainGuard",
+  "description": "Внутренняя система мониторинга доменов: сроки истечения (RDAP/WHOIS), SSL, VirusTotal, DNS/NS, health-check, стоимость продлений и адресные алерты в Telegram/Discord/Slack.",
+  "stack": ["Python 3.12", "FastAPI", "SQLAlchemy 2.0 async", "Pydantic v2", "Alembic", "PostgreSQL 16", "Redis 7", "Dramatiq", "Jinja2+HTMX+Tailwind", "Docker Compose", "nginx"],
+  "nodes": [
+    { "id": "browser", "label": "Браузер", "sub": "Пользователь (UI)", "group": "client", "files": ["templates/*"] },
+    { "id": "claude", "label": "claude.ai / MCP", "sub": "AI-ассистент", "group": "client", "files": [] },
+    { "id": "nginx", "label": "nginx", "sub": "TLS · reverse proxy", "group": "edge", "files": ["docker/nginx/prod.conf", "docker/nginx/default.conf"] },
+    { "id": "api", "label": "api (FastAPI)", "sub": "Web UI + REST /api/v1", "group": "app", "files": ["app/main.py", "app/web/", "app/api/"] },
+    { "id": "mcp", "label": "mcp", "sub": "MCP server (21 tools)", "group": "app", "files": ["app/mcp/server.py", "app/mcp/tools.py", "app/mcp/oauth_provider.py"] },
+    { "id": "scheduler", "label": "scheduler", "sub": "Планировщик проверок/сводок", "group": "app", "files": ["app/scheduler/service.py", "app/scheduler/main.py"] },
+    { "id": "services", "label": "Сервисный слой", "sub": "вся бизнес-логика", "group": "logic", "files": ["app/services/"] },
+    { "id": "worker", "label": "worker", "sub": "Dramatiq акторы", "group": "logic", "files": ["app/workers/checks.py"] },
+    { "id": "alerts", "label": "Движок алертов", "sub": "AlertEvent · дедуп", "group": "logic", "files": ["app/services/alerts.py"] },
+    { "id": "checks", "label": "Проверки", "sub": "rdap · ssl · vt · dns · health", "group": "proc", "files": ["app/checks/"] },
+    { "id": "connectors", "label": "Коннекторы", "sub": "Namecheap · GoDaddy", "group": "proc", "files": ["app/connectors/namecheap.py", "app/connectors/godaddy.py"] },
+    { "id": "channels", "label": "Каналы", "sub": "TG · Discord · Slack · webhook", "group": "proc", "files": ["app/channels/telegram.py", "app/channels/webhook.py"] },
+    { "id": "postgres", "label": "PostgreSQL 16", "sub": "данные + история", "group": "data", "files": ["app/models/", "alembic/"] },
+    { "id": "redis", "label": "Redis 7", "sub": "очередь · кэш · сессии · locks", "group": "data", "files": ["app/db.py", "app/core/rate_limiter.py"] },
+    { "id": "rdapAPI", "label": "RDAP/WHOIS/VT/DNS", "sub": "внешние сервисы", "group": "ext", "files": [] },
+    { "id": "registrarAPI", "label": "Namecheap/GoDaddy API", "sub": "регистраторы", "group": "ext", "files": [] },
+    { "id": "telegram", "label": "Telegram/Discord", "sub": "доставка уведомлений", "group": "ext", "files": [] }
+  ],
+  "edges": [
+    { "from": "browser", "to": "nginx", "label": "HTTPS" },
+    { "from": "claude", "to": "nginx", "label": "MCP/OAuth" },
+    { "from": "nginx", "to": "api", "label": "proxy" },
+    { "from": "nginx", "to": "mcp", "label": "proxy /mcp" },
+    { "from": "api", "to": "services", "label": "вызов" },
+    { "from": "mcp", "to": "services", "label": "tools" },
+    { "from": "scheduler", "to": "services", "label": "digest / retention" },
+    { "from": "scheduler", "to": "redis", "label": "enqueue" },
+    { "from": "redis", "to": "worker", "label": "очередь" },
+    { "from": "worker", "to": "services", "label": "запись результата" },
+    { "from": "worker", "to": "checks", "label": "run_check" },
+    { "from": "worker", "to": "connectors", "label": "sync_registrar" },
+    { "from": "worker", "to": "alerts", "label": "evaluate_after_check" },
+    { "from": "alerts", "to": "channels", "label": "dispatch_instant" },
+    { "from": "services", "to": "channels", "label": "send_to_channel" },
+    { "from": "services", "to": "postgres", "label": "SQL (async)" },
+    { "from": "services", "to": "redis", "label": "cache / session" },
+    { "from": "checks", "to": "rdapAPI", "label": "RDAP/VT/DNS запрос" },
+    { "from": "connectors", "to": "registrarAPI", "label": "getList / pricing" },
+    { "from": "channels", "to": "telegram", "label": "bot / webhook POST" }
+  ],
+  "flows": [
+    {
+      "id": "expiry",
+      "name": "Проверка истечения → алерт",
+      "color": "#f472b6",
+      "description": "Плановая проверка домена, запись результата и мгновенный алерт при пересечении порога.",
+      "steps": [
+        { "node": "scheduler", "action": "Находит домены с наступившим next_check_at, ставит run_check в очередь (джиттер, locks)" },
+        { "node": "redis", "action": "Задача попадает в очередь Dramatiq" },
+        { "node": "worker", "action": "Забирает run_check и диспатчит по типу (rdap → expiry)" },
+        { "node": "checks", "action": "checks/rdap запрашивает RDAP (fallback WHOIS) через токен-бакет + retry + circuit breaker" },
+        { "node": "rdapAPI", "action": "Внешний RDAP/WHOIS отвечает датой истечения, статусами, NS" },
+        { "node": "postgres", "action": "Пишется check_result (партиция по месяцу), домен обновляется (source=rdap, manual не перетирается)" },
+        { "node": "alerts", "action": "Движок оценивает пороги 60/30/14/7/1 → создаёт AlertEvent с дедуп-ключом" },
+        { "node": "channels", "action": "High (expiry ≤7 дн) — резолвит каналы домена (проект→компания→global) и шлёт мгновенно" },
+        { "node": "telegram", "action": "Сообщение доставляется; при недоступности — retry, при ошибке — stale, воркер не падает" }
+      ]
+    },
+    {
+      "id": "dashboard",
+      "name": "Просмотр дашборда (UI)",
+      "color": "#38bdf8",
+      "description": "Пользователь открывает обзор — данные фильтруются по его роли и скоупу.",
+      "steps": [
+        { "node": "browser", "action": "GET / (сессионная cookie)" },
+        { "node": "nginx", "action": "TLS-терминация, проксирование на api" },
+        { "node": "api", "action": "Роут web/auth.home; проверка сессии и роли" },
+        { "node": "services", "action": "dashboard.build_overview — агрегаты в рамках allowed_project_ids пользователя" },
+        { "node": "redis", "action": "Проверка серверной сессии" },
+        { "node": "postgres", "action": "Агрегатные запросы (счётчики, разбивка по компаниям)" }
+      ]
+    },
+    {
+      "id": "sync",
+      "name": "Синк регистратора",
+      "color": "#fb923c",
+      "description": "Периодический (или ручной) импорт доменов из Namecheap/GoDaddy.",
+      "steps": [
+        { "node": "scheduler", "action": "Каждые ~6ч ставит sync_registrar_account в очередь (или ручной запуск из UI)" },
+        { "node": "redis", "action": "Задача синка в очереди" },
+        { "node": "worker", "action": "Забирает sync_registrar_account" },
+        { "node": "connectors", "action": "namecheap/godaddy: getList (пагинация), auto-renew, цены продления; GoDaddy — только ACTIVE" },
+        { "node": "registrarAPI", "action": "Внешний API регистратора отдаёт домены" },
+        { "node": "services", "action": "registrars.sync_account: upsert, manual-safe; новый домен → в проект по умолчанию или в «Неразобранные»" },
+        { "node": "postgres", "action": "Домены/аккаунты сохраняются (креды шифруются Fernet)" }
+      ]
+    },
+    {
+      "id": "digest",
+      "name": "Ежедневная сводка",
+      "color": "#34d399",
+      "description": "В digest_time канала собирается и отправляется сводка активных алертов.",
+      "steps": [
+        { "node": "scheduler", "action": "В минуту digest_time (Europe/Kyiv) выбирает каналы digest/both; идемпотентность через Redis SET NX" },
+        { "node": "services", "action": "digest.compose_digest: активные алерты по скоупу канала, только is_active домены, группировка по срочности + аккаунт" },
+        { "node": "postgres", "action": "Чтение AlertEvent + Domain + RegistrarAccount" },
+        { "node": "redis", "action": "send_notification ставится в очередь" },
+        { "node": "worker", "action": "Актор send_notification выполняет доставку" },
+        { "node": "channels", "action": "Текст бьётся на части под лимит (Discord 2000 / Telegram 4096) — chunk_message" },
+        { "node": "telegram", "action": "Сводка доставляется; результат пишется в notification_log" }
+      ]
+    },
+    {
+      "id": "mcp",
+      "name": "MCP-вызов инструмента",
+      "color": "#a78bfa",
+      "description": "AI-ассистент вызывает инструмент; роль/скоуп берутся от владельца токена, мутации идут в аудит.",
+      "steps": [
+        { "node": "claude", "action": "Вызов tool (OAuth-токен или dg_ API-токен)" },
+        { "node": "nginx", "action": "Проксирует /mcp на контейнер mcp (SSE, proxy_buffering off)" },
+        { "node": "mcp", "action": "load_access_token → acting_user; тонкая обёртка вызывает tools.*" },
+        { "node": "services", "action": "Те же сервисы, что и UI → скоуп + аудит автоматически; мутации требуют Manager+" },
+        { "node": "postgres", "action": "Чтение/запись + AuditLog от имени владельца токена" }
+      ]
+    },
+    {
+      "id": "health",
+      "name": "Health-check (кастомный URL)",
+      "color": "#fbbf24",
+      "description": "HTTP-проверка доступности URL со state-машиной up/down и SSRF-защитой.",
+      "steps": [
+        { "node": "scheduler", "action": "Ставит run_healthcheck для созревших проверок" },
+        { "node": "redis", "action": "Задача в очереди" },
+        { "node": "worker", "action": "Забирает run_healthcheck" },
+        { "node": "checks", "action": "checks/healthcheck: net_guard.validate_public_url (SSRF), GET/HEAD, статус + Location + подстрока в теле" },
+        { "node": "alerts", "action": "State-машина up/down/unknown: N неудач подряд → событие down, восстановление → recovered" },
+        { "node": "channels", "action": "health_down (high) — мгновенная доставка" },
+        { "node": "telegram", "action": "Уведомление о недоступности" }
+      ]
+    },
+    {
+      "id": "auth",
+      "name": "Вход + 2FA",
+      "color": "#fb7185",
+      "description": "Аутентификация с argon2, брутфорс-защитой, серверной сессией и опциональным TOTP.",
+      "steps": [
+        { "node": "browser", "action": "POST /login (логин, пароль, при 2FA — код)" },
+        { "node": "nginx", "action": "Edge rate-limit на /login, проксирование на api" },
+        { "node": "api", "action": "web/auth.login" },
+        { "node": "services", "action": "auth.authenticate: argon2, login_guard (5 попыток/15мин), TOTP verify если включён" },
+        { "node": "redis", "action": "Счётчик попыток + создание серверной сессии (cookie httponly/lax)" }
+      ]
+    }
+  ]
+}
