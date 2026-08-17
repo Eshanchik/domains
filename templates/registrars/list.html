@@ -26,6 +26,7 @@
         <td>{{ a.last_sync_at.strftime('%Y-%m-%d %H:%M') if a.last_sync_at else '—' }}</td>
         <td>
           <div class="flex items-center gap-3">
+            <a href="/registrars/{{ a.id }}/edit" class="link">Изменить</a>
             <form method="post" action="/registrars/{{ a.id }}/sync" class="inline"><button class="link">Синк</button></form>
             <form method="post" action="/registrars/{{ a.id }}/delete" class="inline" onsubmit="return confirm('Удалить аккаунт?');"><button class="btn-link-danger">Удалить</button></form>
           </div>

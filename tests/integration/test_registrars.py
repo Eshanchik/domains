@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 
 from app.connectors.base import ConnectorError, RegistrarConnector, RegistrarDomain
+from app.core import crypto
 from app.db import SessionLocal
 from app.models.domain import Domain
 from app.models.registrar import RegistrarAccount, UnassignedDomain
+from app.models.user import Role
 from app.services import registrars as svc
 
 
@@ -316,3 +319,107 @@ def test_godaddy_account_dispatch(make_company, make_project):
     enc, is_godaddy = _run(run())
     assert "SECRET" not in enc  # creds encrypted
     assert is_godaddy is True
+
+
+# --- T60: edit registrar account -------------------------------------------
+
+
+def _creds(account_id: int) -> dict:
+    async def _q():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, account_id)
+            return json.loads(crypto.decrypt(acc.credentials_enc))
+
+    return _run(_q())
+
+
+def test_account_connector_type():
+    aid = _make_account()
+
+    async def run():
+        async with SessionLocal() as s:
+            return await svc.account_connector_type(s, await s.get(RegistrarAccount, aid))
+
+    assert _run(run()) == "namecheap"
+
+
+def test_update_account_changes_ip_keeps_blank_secret():
+    aid = _make_account()  # client_ip 1.2.3.4, api_key SECRETKEY
+
+    async def run():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            await svc.update_account(
+                s,
+                acc,
+                label="renamed",
+                default_project_id=None,
+                creds_updates={
+                    "client_ip": "9.9.9.9",
+                    "api_user": "",
+                    "username": "",
+                    "api_key": "",
+                },
+                actor_id=None,
+            )
+        async with SessionLocal() as s:
+            return (await s.get(RegistrarAccount, aid)).label
+
+    label = _run(run())
+    creds = _creds(aid)
+    assert label == "renamed"
+    assert creds["client_ip"] == "9.9.9.9"  # IP updated
+    assert creds["api_key"] == "SECRETKEY"  # blank field kept the stored secret
+
+
+def test_update_account_rotates_secret_when_provided():
+    aid = _make_account()
+
+    async def run():
+        async with SessionLocal() as s:
+            acc = await s.get(RegistrarAccount, aid)
+            await svc.update_account(
+                s,
+                acc,
+                label="main",
+                default_project_id=None,
+                creds_updates={"client_ip": "1.2.3.4", "api_key": "NEWKEY"},
+                actor_id=None,
+            )
+
+    _run(run())
+    assert _creds(aid)["api_key"] == "NEWKEY"
+
+
+def test_edit_form_and_update_via_web(client, make_user):
+    make_user(login="root", password="password123", role=Role.admin)
+    client.post("/login", data={"login": "root", "password": "password123"})
+    aid = _make_account()
+
+    form = client.get(f"/registrars/{aid}/edit")
+    assert form.status_code == 200
+    assert "1.2.3.4" in form.text  # current IP pre-filled
+
+    resp = client.post(
+        f"/registrars/{aid}",
+        data={
+            "label": "main",
+            "default_project_id": "",
+            "client_ip": "5.6.7.8",
+            "api_user": "",
+            "username": "",
+            "api_key": "",  # blank → keep stored secret
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    creds = _creds(aid)
+    assert creds["client_ip"] == "5.6.7.8"
+    assert creds["api_key"] == "SECRETKEY"
+
+
+def test_edit_requires_admin(client, make_user):
+    make_user(login="v", password="password123", role=Role.viewer)
+    client.post("/login", data={"login": "v", "password": "password123"})
+    aid = _make_account()
+    assert client.get(f"/registrars/{aid}/edit", follow_redirects=False).status_code == 403

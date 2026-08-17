@@ -96,6 +96,68 @@ async def godaddy_create(
     return RedirectResponse("/registrars", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.get("/registrars/{account_id}/edit", response_class=HTMLResponse)
+async def registrar_edit_form(
+    request: Request,
+    account_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(admin_required),
+) -> HTMLResponse:
+    account = await svc.get_account(session, account_id)
+    if account is None:
+        return RedirectResponse("/registrars", status_code=status.HTTP_303_SEE_OTHER)
+    connector_type = await svc.account_connector_type(session, account)
+    projects = await companies_svc.list_projects(session, user)
+    return templates.TemplateResponse(
+        request,
+        "registrars/edit.html",
+        {
+            "user": user,
+            "account": account,
+            "connector_type": connector_type,
+            "client_ip": svc.account_masked_ip(account),
+            "projects": projects,
+        },
+    )
+
+
+@router.post("/registrars/{account_id}")
+async def registrar_update(
+    account_id: int,
+    label: str = Form(...),
+    default_project_id: str = Form(""),
+    client_ip: str = Form(""),
+    api_user: str = Form(""),
+    api_key: str = Form(""),
+    username: str = Form(""),
+    api_secret: str = Form(""),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(admin_required),
+):
+    account = await svc.get_account(session, account_id)
+    if account is None:
+        return RedirectResponse("/registrars", status_code=status.HTTP_303_SEE_OTHER)
+    connector_type = await svc.account_connector_type(session, account)
+    if connector_type == "godaddy":
+        creds_updates = {"api_key": api_key, "api_secret": api_secret}
+    else:
+        creds_updates = {
+            "api_user": api_user,
+            "api_key": api_key,
+            "username": username,
+            "client_ip": client_ip,
+        }
+    await svc.update_account(
+        session,
+        account,
+        label=label,
+        default_project_id=_int_or_none(default_project_id),
+        creds_updates=creds_updates,
+        actor_id=user.id,
+    )
+    return RedirectResponse("/registrars", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.post("/registrars/{account_id}/sync")
 async def registrar_sync(
     account_id: int,

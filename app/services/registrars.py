@@ -133,6 +133,64 @@ async def create_godaddy_account(
     )
 
 
+# Credential fields to report as "rotated" in the audit (names only, never values).
+_SECRET_KEYS = ("api_key", "api_secret", "api_user", "username")
+
+
+async def account_connector_type(session: AsyncSession, account: RegistrarAccount) -> str:
+    """Return the account's connector type (``namecheap`` / ``godaddy``)."""
+    registrar = await session.get(Registrar, account.registrar_id)
+    return registrar.connector_type if registrar and registrar.connector_type else "namecheap"
+
+
+async def update_account(
+    session: AsyncSession,
+    account: RegistrarAccount,
+    *,
+    label: str,
+    default_project_id: int | None,
+    creds_updates: dict[str, str],
+    actor_id: int,
+) -> RegistrarAccount:
+    """Update an account's label, default project and (optionally) credentials/IP.
+
+    Values in ``creds_updates`` that are blank are ignored, so leaving a credential
+    field empty keeps the stored secret. The merged creds are re-encrypted. Secret
+    values are never written to the audit log — only which fields were rotated.
+    """
+    creds: dict[str, str] = {}
+    if account.credentials_enc:
+        try:
+            creds = json.loads(crypto.decrypt(account.credentials_enc))
+        except (crypto.CryptoError, json.JSONDecodeError):
+            creds = {}
+    for key, value in creds_updates.items():
+        if value is not None and str(value).strip() != "":
+            creds[key] = value
+
+    account.label = label
+    account.default_project_id = default_project_id
+    account.credentials_enc = crypto.encrypt(json.dumps(creds))
+
+    diff: dict[str, object] = {"label": label}
+    if "client_ip" in creds:  # non-secret — safe to record
+        diff["client_ip"] = creds["client_ip"]
+    rotated = sorted(k for k in _SECRET_KEYS if str(creds_updates.get(k, "")).strip())
+    if rotated:
+        diff["rotated"] = rotated  # field names only, never values
+    await record_audit(
+        session,
+        actor_id=actor_id,
+        action="update",
+        entity_type="registrar_account",
+        entity_id=account.id,
+        diff=diff,
+    )
+    await session.commit()
+    await session.refresh(account)
+    return account
+
+
 async def delete_account(
     session: AsyncSession, account: RegistrarAccount, *, actor_id: int
 ) -> None:
