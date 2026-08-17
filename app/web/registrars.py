@@ -157,7 +157,11 @@ async def registrar_update(
                 ipaddress.ip_address(client_ip.strip())
             except ValueError:
                 return await _render_edit(
-                    request, session, account, connector_type, user,
+                    request,
+                    session,
+                    account,
+                    connector_type,
+                    user,
                     error="Неверный формат Client IP.",
                 )
         creds_updates = {

@@ -458,8 +458,12 @@ def test_update_aborts_on_undecryptable_credentials():
             acc = await s.get(RegistrarAccount, aid)
             try:
                 await svc.update_account(
-                    s, acc, label="x", default_project_id=None,
-                    creds_updates={"client_ip": "9.9.9.9"}, actor_id=None,
+                    s,
+                    acc,
+                    label="x",
+                    default_project_id=None,
+                    creds_updates={"client_ip": "9.9.9.9"},
+                    actor_id=None,
                 )
                 return "updated"
             except svc.CredentialDecryptError:
@@ -481,8 +485,12 @@ def test_update_strips_whitespace():
         async with SessionLocal() as s:
             acc = await s.get(RegistrarAccount, aid)
             await svc.update_account(
-                s, acc, label="m", default_project_id=None,
-                creds_updates={"api_key": "  NEWKEY \n", "client_ip": "1.2.3.4"}, actor_id=None,
+                s,
+                acc,
+                label="m",
+                default_project_id=None,
+                creds_updates={"api_key": "  NEWKEY \n", "client_ip": "1.2.3.4"},
+                actor_id=None,
             )
 
     _run(run())
@@ -505,8 +513,12 @@ def test_update_clears_stale_error():
         async with SessionLocal() as s:
             acc = await s.get(RegistrarAccount, aid)
             await svc.update_account(
-                s, acc, label="m", default_project_id=None,
-                creds_updates={"client_ip": "1.2.3.4"}, actor_id=None,
+                s,
+                acc,
+                label="m",
+                default_project_id=None,
+                creds_updates={"client_ip": "1.2.3.4"},
+                actor_id=None,
             )
         async with SessionLocal() as s:
             acc = await s.get(RegistrarAccount, aid)
@@ -563,8 +575,14 @@ def test_edit_change_default_project(client, make_user, make_company, make_proje
     async def mk() -> int:
         async with SessionLocal() as s:
             acc = await svc.create_namecheap_account(
-                s, label="m", api_user="u", api_key="K", username="u", client_ip="1.2.3.4",
-                actor_id=None, default_project_id=proj,
+                s,
+                label="m",
+                api_user="u",
+                api_key="K",
+                username="u",
+                client_ip="1.2.3.4",
+                actor_id=None,
+                default_project_id=proj,
             )
             return acc.id
 
