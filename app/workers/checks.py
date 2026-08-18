@@ -143,6 +143,30 @@ def send_notification(channel_id: int, text: str, alert_event_id: int | None = N
     asyncio.run(_send_notification(channel_id, text, alert_event_id))
 
 
+async def _send_digest(channel_id: int) -> None:
+    redis = get_redis()
+    try:
+        async with worker_session() as session:
+            from app.services import notifications as notif
+            from app.services.digest import compose_digest
+
+            channel = await notif.get_channel(session, channel_id)
+            if channel is None:
+                return
+            digest = await compose_digest(session, channel)
+            if digest is not None:
+                await notif.send_digest_to_channel(session, redis, channel, digest)
+    finally:
+        await redis.aclose()
+
+
+@dramatiq.actor(max_retries=3, queue_name="notifications")
+def send_digest(channel_id: int) -> None:
+    """Re-compose and deliver a channel's daily digest (runs in the worker, which has
+    egress). Enqueued by the scheduler, which cannot reach the network itself."""
+    asyncio.run(_send_digest(channel_id))
+
+
 async def _sync_registrar_account(account_id: int) -> None:
     async with worker_session() as session:
         from app.services import registrars as reg

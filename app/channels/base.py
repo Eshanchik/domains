@@ -62,6 +62,13 @@ class NotificationChannel(ABC):
         for chunk in chunk_message(text, self.MAX_LEN):
             await self._send_one(chunk)
 
+    async def send_digest(self, digest: object) -> None:
+        """Deliver a structured Digest. The default renders the plain-text layout; rich
+        channels (Discord embeds, Telegram HTML) override this."""
+        from app.services.digest import render_plain
+
+        await self.send(render_plain(digest))
+
     @abstractmethod
     async def _send_one(self, text: str) -> None:
         """Deliver a single already-size-bounded message."""

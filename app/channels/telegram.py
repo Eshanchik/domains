@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import httpx
 
-from app.channels.base import ChannelError, ChannelTransientError, NotificationChannel
+from app.channels.base import (
+    ChannelError,
+    ChannelTransientError,
+    NotificationChannel,
+    chunk_message,
+)
 
 API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 
@@ -23,16 +28,22 @@ class TelegramChannel(NotificationChannel):
         self._chat_id = chat_id
         self._client = client
 
-    async def _send_one(self, text: str) -> None:
+    async def send_digest(self, digest: object) -> None:
+        """Render the digest as Telegram HTML (bold headers, linked domains)."""
+        from app.services.digest import render_telegram_html
+
+        for chunk in chunk_message(render_telegram_html(digest), self.MAX_LEN):
+            await self._send_one(chunk, parse_mode="HTML")
+
+    async def _send_one(self, text: str, parse_mode: str | None = None) -> None:
+        body = {"chat_id": self._chat_id, "text": text, "disable_web_page_preview": True}
+        if parse_mode:
+            body["parse_mode"] = parse_mode
         owns = self._client is None
         client = self._client or httpx.AsyncClient()
         try:
             try:
-                resp = await client.post(
-                    API_URL.format(token=self._token),
-                    json={"chat_id": self._chat_id, "text": text, "disable_web_page_preview": True},
-                    timeout=15.0,
-                )
+                resp = await client.post(API_URL.format(token=self._token), json=body, timeout=15.0)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 raise ChannelTransientError(f"telegram request failed: {exc}") from exc
 

@@ -30,14 +30,14 @@ BACKFILL_EVERY_TICKS = 10  # backfill roughly every 5 minutes
 
 async def _run_digests(session, redis) -> list[int]:
     from app.services.digest import run_digests
-    from app.workers.checks import send_notification
+    from app.workers.checks import send_digest
 
     now_kyiv = datetime.now(KYIV)
     return await run_digests(
         session,
         redis,
         now_kyiv=now_kyiv,
-        send=lambda cid, text: send_notification.send(cid, text, None),
+        send=lambda cid: send_digest.send(cid),
     )
 
 

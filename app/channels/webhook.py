@@ -24,12 +24,12 @@ class _WebhookChannel(NotificationChannel):
     def _is_success(self, status_code: int) -> bool:
         return 200 <= status_code < 300
 
-    async def _send_one(self, text: str) -> None:
+    async def _post(self, payload: dict) -> None:
         owns = self._client is None
         client = self._client or httpx.AsyncClient()
         try:
             try:
-                resp = await client.post(self._url, json=self._payload(text), timeout=15.0)
+                resp = await client.post(self._url, json=payload, timeout=15.0)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 raise ChannelTransientError(f"webhook request failed: {exc}") from exc
 
@@ -40,6 +40,9 @@ class _WebhookChannel(NotificationChannel):
         finally:
             if owns:
                 await client.aclose()
+
+    async def _send_one(self, text: str) -> None:
+        await self._post(self._payload(text))
 
 
 class SlackChannel(_WebhookChannel):
@@ -52,6 +55,13 @@ class DiscordChannel(_WebhookChannel):
 
     def _payload(self, text: str) -> dict:
         return {"content": text}
+
+    async def send_digest(self, digest: object) -> None:
+        """Render the digest as native Discord embeds (colored severity cards)."""
+        from app.services.digest import render_discord
+
+        for body in render_discord(digest):
+            await self._post(body)
 
 
 class GenericWebhookChannel(_WebhookChannel):

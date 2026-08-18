@@ -123,8 +123,8 @@ async def channel_send_now(
     channel = await svc.get_channel(session, channel_id)
     result = "none"  # nothing to report
     if channel is not None:
-        text = await compose_digest(session, channel)
-        if text:
-            ok = await svc.send_to_channel(session, redis, channel, text)
+        digest = await compose_digest(session, channel)
+        if digest is not None:
+            ok = await svc.send_digest_to_channel(session, redis, channel, digest)
             result = "ok" if ok else "fail"
     return RedirectResponse(f"/channels?sent={result}", status_code=status.HTTP_303_SEE_OTHER)
