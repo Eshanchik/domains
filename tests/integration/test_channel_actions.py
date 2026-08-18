@@ -76,17 +76,20 @@ def test_send_now_dispatches_digest(
     _make_alert(dom, kind="expiry")
     cid = _make_channel(is_default=True)
 
-    sent: list[str] = []
+    sent: list = []
 
-    async def fake_send(session, redis, channel, text):
-        sent.append(text)
+    async def fake_send_digest(session, redis, channel, digest):
+        sent.append(digest)
         return True
 
-    monkeypatch.setattr(notif, "send_to_channel", fake_send)
+    monkeypatch.setattr(notif, "send_digest_to_channel", fake_send_digest)
     resp = client.post(f"/channels/{cid}/send-now", follow_redirects=False)
     assert resp.status_code == 303
     assert resp.headers["location"] == "/channels?sent=ok"
-    assert sent and "soon.com" in sent[0]
+
+    from app.services.digest import render_plain
+
+    assert sent and "soon.com" in render_plain(sent[0])
 
 
 def test_send_now_requires_admin(client, make_user):
