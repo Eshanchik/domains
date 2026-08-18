@@ -332,15 +332,18 @@ def render_telegram_html(d: Digest) -> str:
     def esc(s: str) -> str:
         return html.escape(s, quote=False)
 
+    def attr(s: str) -> str:  # attribute-context escape (quotes too) for href values
+        return html.escape(s, quote=True)
+
     def link(r: DigestRow) -> str:
-        return f'<a href="{r.url}">{esc(r.fqdn)}</a>' if r.url else f"<b>{esc(r.fqdn)}</b>"
+        return f'<a href="{attr(r.url)}">{esc(r.fqdn)}</a>' if r.url else f"<b>{esc(r.fqdn)}</b>"
 
     head = [
         f"<b>📋 DomainGuard · {esc(d.scope_name)} — ежедневная сводка</b>",
         f"Активных алертов: <b>{d.total}</b> · требуют действий: <b>{d.action_count}</b>",
     ]
     if d.dashboard_url:
-        head.append(f'<a href="{d.dashboard_url}">Открыть дашборд →</a>')
+        head.append(f'<a href="{attr(d.dashboard_url)}">Открыть дашборд →</a>')
     head.append(f"<i>Сводка за {esc(d.generated_label)}</i>")
     lines = head
     for t in d.tiers:
@@ -378,8 +381,46 @@ def _pack_field(lines: list[str], dashboard: str | None, limit: int = 1024) -> s
     return "".join(out) or "—"
 
 
+# Discord hard limits: a single embed and a whole message are both capped at 6000
+# chars (title + names + values + footer/author), ≤25 fields/embed, ≤10 embeds/message.
+_D_EMBED_CHARS = 5500  # per-embed budget, margin under 6000
+_D_MSG_CHARS = 6000
+_D_FIELDS = 25
+_D_EMBEDS = 10
+
+
+def _embed_size(e: dict) -> int:
+    n = len(e.get("title", "")) + len(e.get("description", ""))
+    n += len(e.get("author", {}).get("name", "")) + len(e.get("footer", {}).get("text", ""))
+    for f in e.get("fields", []):
+        n += len(f.get("name", "")) + len(f.get("value", ""))
+    return n
+
+
+def _tier_embeds(t: DigestTier, dashboard: str | None) -> list[dict]:
+    """Render a tier into one or more embeds, each ≤ _D_EMBED_CHARS and ≤25 fields."""
+    title = f"{t.emoji} {t.title} — {t.count}"
+    out: list[dict] = []
+    cur: dict = {"title": title, "color": t.color, "fields": []}
+    used = len(title)
+    for g in t.groups:
+        name = f"{g.emoji} {g.title} · {len(g.rows)}"
+        value = _pack_field([_row_discord(r) for r in g.rows], dashboard)
+        add = len(name) + len(value)
+        if cur["fields"] and (used + add > _D_EMBED_CHARS or len(cur["fields"]) >= _D_FIELDS):
+            out.append(cur)
+            cont = f"{title} (продолжение)"
+            cur = {"title": cont, "color": t.color, "fields": []}
+            used = len(cont)
+        cur["fields"].append({"name": name, "value": value, "inline": False})
+        used += add
+    out.append(cur)
+    return out
+
+
 def render_discord(d: Digest) -> list[dict]:
-    """One or more Discord webhook message bodies (lead embed + per-tier embeds)."""
+    """Discord webhook message bodies: a lead embed + per-tier cards, packed so no embed
+    or message exceeds Discord's 6000-char / 10-embed caps."""
     lead = {
         "author": {
             "name": f"DomainGuard · {d.scope_name}",
@@ -397,21 +438,22 @@ def render_discord(d: Digest) -> list[dict]:
     }
     embeds: list[dict] = [lead]
     for t in d.tiers:
-        fields = [
-            {
-                "name": f"{g.emoji} {g.title} · {len(g.rows)}",
-                "value": _pack_field([_row_discord(r) for r in g.rows], d.dashboard_url),
-                "inline": False,
-            }
-            for g in t.groups
-        ]
-        embeds.append(
-            {"title": f"{t.emoji} {t.title} — {t.count}", "color": t.color, "fields": fields[:25]}
-        )
-    # Discord caps a message at 10 embeds — split into multiple POSTs if ever needed.
-    return [
-        {"username": "DomainGuard", "embeds": embeds[i : i + 10]} for i in range(0, len(embeds), 10)
-    ]
+        embeds.extend(_tier_embeds(t, d.dashboard_url))
+
+    # Pack embeds into messages within the 6000-char and 10-embed per-message caps.
+    messages: list[dict] = []
+    cur: list[dict] = []
+    used = 0
+    for e in embeds:
+        size = _embed_size(e)
+        if cur and (used + size > _D_MSG_CHARS or len(cur) >= _D_EMBEDS):
+            messages.append({"username": "DomainGuard", "embeds": cur})
+            cur, used = [], 0
+        cur.append(e)
+        used += size
+    if cur:
+        messages.append({"username": "DomainGuard", "embeds": cur})
+    return messages
 
 
 # --- scheduling --------------------------------------------------------------

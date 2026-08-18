@@ -306,3 +306,90 @@ def test_render_telegram_html(make_company, make_project, make_domain):
     html_text = render_telegram_html(_run(compose()))
     assert "<b>" in html_text
     assert '<a href="' in html_text and "tg.com" in html_text
+
+
+def test_render_discord_respects_size_limits():
+    """A mixed-kind, high-volume tier must be split so no embed/message exceeds Discord's
+    6000-char / 10-embed / 25-field / 1024-value caps."""
+    from app.services.digest import (
+        Digest,
+        DigestGroup,
+        DigestRow,
+        DigestTier,
+        _embed_size,
+        render_discord,
+    )
+
+    groups = []
+    for order, emoji, title in [
+        (0, "💀", "Просрочены"),
+        (1, "🔴", "Истекают ≤7 дней"),
+        (5, "🔒", "Истекает SSL"),
+        (6, "🚨", "VirusTotal"),
+        (7, "🔴", "Health-check недоступны"),
+        (8, "🛡️", "Смена NS"),
+    ]:
+        rows = [
+            DigestRow(
+                fqdn=f"domain-{order}-{i}.example.com",
+                kind="expiry",
+                days=1,
+                url=f"https://dg.example/domains/{order}{i}",
+                account="Account",
+            )
+            for i in range(20)
+        ]
+        groups.append(DigestGroup(order, emoji, title, rows))
+    d = Digest(
+        scope_name="Big",
+        dashboard_url="https://dg.example",
+        generated_label="x",
+        total=120,
+        tiers=[DigestTier("crit", 0xE5484D, "🔴", "Критично", groups)],
+    )
+    messages = render_discord(d)
+    assert len(messages) >= 1
+    for m in messages:
+        assert len(m["embeds"]) <= 10
+        assert sum(_embed_size(e) for e in m["embeds"]) <= 6000  # per-message cap
+        for e in m["embeds"]:
+            assert _embed_size(e) <= 6000  # per-embed cap
+            assert len(e.get("fields", [])) <= 25
+            for f in e.get("fields", []):
+                assert len(f["value"]) <= 1024
+
+
+def test_telegram_html_escapes_href():
+    from app.services.digest import (
+        Digest,
+        DigestGroup,
+        DigestRow,
+        DigestTier,
+        render_telegram_html,
+    )
+
+    d = Digest(
+        scope_name="S",
+        dashboard_url='https://x/?a=1&b=2"z',
+        generated_label="g",
+        total=1,
+        tiers=[
+            DigestTier(
+                "crit",
+                0,
+                "🔴",
+                "Критично",
+                [
+                    DigestGroup(
+                        1,
+                        "🔴",
+                        "g",
+                        [DigestRow(fqdn="a.com", kind="expiry", days=1, url='https://x/d/1?q="&x')],
+                    )
+                ],
+            )
+        ],
+    )
+    out = render_telegram_html(d)
+    assert "&quot;" in out and "&amp;" in out  # href escaped for attribute context
+    assert 'href="https://x/?a=1&b=2"z"' not in out  # raw unescaped href absent

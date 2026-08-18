@@ -81,7 +81,7 @@ async def _run() -> None:
                 if synced:
                     log.info("enqueued %d registrar syncs", len(synced))
                 if digested:
-                    log.info("sent %d digests", len(digested))
+                    log.info("enqueued %d digests", len(digested))
             except Exception:  # noqa: BLE001 — never let the loop die
                 log.exception("scheduler tick failed")
             tick += 1
