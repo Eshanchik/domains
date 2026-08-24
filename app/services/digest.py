@@ -142,6 +142,7 @@ class Digest:
     generated_label: str
     total: int
     tiers: list[DigestTier] = field(default_factory=list)
+    event_ids: list[int] = field(default_factory=list)  # alert events covered (to mark sent)
 
     @property
     def action_count(self) -> int:
@@ -199,7 +200,11 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
         .join(Domain, Domain.id == AlertEvent.domain_id)
         .join(Project, Project.id == Domain.project_id)
         .outerjoin(RegistrarAccount, RegistrarAccount.id == Domain.registrar_account_id)
-        .where(AlertEvent.state == "active", Domain.is_active.is_(True))
+        .where(
+            AlertEvent.state == "active",
+            AlertEvent.notified_at.is_(None),  # deliver-once: only alerts not yet sent
+            Domain.is_active.is_(True),
+        )
     )
     if scope is not None:
         if not scope:
@@ -213,9 +218,11 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
     base = (settings.public_base_url or "").rstrip("/")
     tier_groups: dict[str, dict[int, DigestGroup]] = {k: {} for k in _TIER_ORDER}
     total = 0
+    event_ids: list[int] = []
 
     for event, did, fqdn, exp, auto_renew, account, project in rows:
         total += 1
+        event_ids.append(event.id)
         p = event.payload_json or {}
         kind = event.kind
         days: int | None = None
@@ -276,6 +283,7 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
         generated_label=f"{generated} · Kyiv · дни пересчитаны на сейчас",
         total=total,
         tiers=tiers,
+        event_ids=event_ids,
     )
 
 

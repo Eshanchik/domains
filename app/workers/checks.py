@@ -155,7 +155,11 @@ async def _send_digest(channel_id: int) -> None:
                 return
             digest = await compose_digest(session, channel)
             if digest is not None:
-                await notif.send_digest_to_channel(session, redis, channel, digest)
+                ok = await notif.send_digest_to_channel(session, redis, channel, digest)
+                if ok:
+                    from app.services.alerts import mark_events_notified
+
+                    await mark_events_notified(session, digest.event_ids)
     finally:
         await redis.aclose()
 

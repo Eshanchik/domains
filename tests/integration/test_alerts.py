@@ -70,8 +70,8 @@ def test_expiry_threshold_crossing_fires_new_event(make_company, make_project, m
             d = await _domain(s, dom)
             first = await alerts.evaluate_expiry(s, d, now=NOW)  # band 30
             await s.commit()
-            # Domain now 10 days out → crosses the 14-day band.
-            d.expiry_date = NOW + timedelta(days=10)
+            # Domain now 5 days out → crosses the 7-day band.
+            d.expiry_date = NOW + timedelta(days=5)
             second = await alerts.evaluate_expiry(s, d, now=NOW)
             await s.commit()
             severities = [e.severity for e in first + second]
@@ -79,8 +79,8 @@ def test_expiry_threshold_crossing_fires_new_event(make_company, make_project, m
 
     n1, n2, sevs = _run(run())
     assert n1 == 1  # 30-day band
-    assert n2 == 1  # new 14-day band event
-    # Only the tightest (14) band stays active; the 30 band was resolved.
+    assert n2 == 1  # new 7-day band event
+    # Only the tightest (7) band stays active; the 30 band was resolved.
     assert _active_count() == 1
 
 
@@ -197,3 +197,20 @@ def test_dispatch_instant_sends_high_severity(make_company, make_project, make_d
     count = _run(run())
     assert count == 1
     assert sent and "истекает" in sent[0][1]
+
+
+def test_expiry_no_alert_beyond_30_days(make_company, make_project, make_domain):
+    """Thresholds are 30/7/1 — a domain 45 days out (was inside the removed 60 band) fires
+    nothing."""
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="far.com", expiry_date=NOW + timedelta(days=45))
+
+    async def run():
+        async with SessionLocal() as s:
+            d = await _domain(s, dom)
+            events = await alerts.evaluate_expiry(s, d, now=NOW)
+            await s.commit()
+            return len(events)
+
+    assert _run(run()) == 0

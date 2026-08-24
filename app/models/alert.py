@@ -62,4 +62,7 @@ class AlertEvent(Base):
     state: Mapped[str] = mapped_column(String(8), default="active")  # active|resolved
     fired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When this event was delivered (instant or digest). NULL = not yet notified, so it
+    # is picked up by the next digest exactly once; each threshold crossing is a new event.
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     payload_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
