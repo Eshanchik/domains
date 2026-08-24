@@ -78,3 +78,43 @@ async def test_discord_long_message_is_chunked_under_2000() -> None:
     for call in route.calls:
         body = json.loads(call.request.content)
         assert len(body["content"]) <= 2000
+
+
+@respx.mock
+async def test_discord_send_digest_posts_embeds() -> None:
+    from app.services.digest import Digest, DigestGroup, DigestRow, DigestTier
+
+    route = respx.post(URL).respond(204)
+    digest = Digest(
+        scope_name="Adera",
+        dashboard_url="https://dg.example",
+        generated_label="18.08.2026 09:00 · Kyiv",
+        total=1,
+        tiers=[
+            DigestTier(
+                "crit",
+                0xE5484D,
+                "🔴",
+                "Критично",
+                [
+                    DigestGroup(
+                        1,
+                        "🔴",
+                        "Истекают ≤7 дней",
+                        [
+                            DigestRow(
+                                fqdn="a.com",
+                                kind="expiry",
+                                days=2,
+                                url="https://dg.example/domains/1",
+                            )
+                        ],
+                    )
+                ],
+            )
+        ],
+    )
+    await DiscordChannel(URL).send_digest(digest)
+    body = json.loads(route.calls.last.request.content)
+    assert body["embeds"][0]["title"] == "Ежедневная сводка"  # lead embed
+    assert "a.com" in json.dumps(body, ensure_ascii=False)  # domain rendered

@@ -30,14 +30,14 @@ BACKFILL_EVERY_TICKS = 10  # backfill roughly every 5 minutes
 
 async def _run_digests(session, redis) -> list[int]:
     from app.services.digest import run_digests
-    from app.workers.checks import send_notification
+    from app.workers.checks import send_digest
 
     now_kyiv = datetime.now(KYIV)
     return await run_digests(
         session,
         redis,
         now_kyiv=now_kyiv,
-        send=lambda cid, text: send_notification.send(cid, text, None),
+        send=lambda cid: send_digest.send(cid),
     )
 
 
@@ -81,7 +81,7 @@ async def _run() -> None:
                 if synced:
                     log.info("enqueued %d registrar syncs", len(synced))
                 if digested:
-                    log.info("sent %d digests", len(digested))
+                    log.info("enqueued %d digests", len(digested))
             except Exception:  # noqa: BLE001 — never let the loop die
                 log.exception("scheduler tick failed")
             tick += 1

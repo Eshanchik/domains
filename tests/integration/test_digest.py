@@ -10,7 +10,13 @@ from app.db import SessionLocal, get_redis
 from app.models.alert import AlertEvent
 from app.models.notification import NotificationChannel
 from app.services import notifications as notif
-from app.services.digest import compose_digest, run_digests
+from app.services.digest import (
+    compose_digest,
+    render_discord,
+    render_plain,
+    render_telegram_html,
+    run_digests,
+)
 
 KYIV = ZoneInfo("Europe/Kyiv")
 
@@ -72,10 +78,10 @@ def test_compose_scoped_to_project(make_company, make_project, make_domain):
             channel = await s.get(NotificationChannel, ch)
             return await compose_digest(s, channel)
 
-    text = _run(compose())
+    text = render_plain(_run(compose()))
     assert "in-scope.com" in text
     assert "out-scope.com" not in text
-    assert "Истекают домены" in text
+    assert "ежедневная сводка" in text
 
 
 def test_compose_excludes_archived_domains(make_company, make_project, make_domain):
@@ -91,7 +97,7 @@ def test_compose_excludes_archived_domains(make_company, make_project, make_doma
         async with SessionLocal() as s:
             return await compose_digest(s, await s.get(NotificationChannel, ch))
 
-    text = _run(compose())
+    text = render_plain(_run(compose()))
     assert "live.com" in text
     assert "dead.com" not in text  # archived domain never pollutes the digest
 
@@ -124,11 +130,11 @@ def test_compose_groups_by_urgency_and_shows_account(make_company, make_project,
         async with SessionLocal() as s:
             return await compose_digest(s, await s.get(NotificationChannel, ch))
 
-    text = _run(compose())
+    text = render_plain(_run(compose()))
     assert "DomainGuard · ACME" in text  # header names the scope (company)
     assert "≤7 дней" in text and "31–60 дней" in text  # urgency buckets
-    assert "· Kingbilly" in text  # registrar account per line
-    # urgent (3d) is listed before later (45d)
+    assert "Kingbilly" in text  # registrar account per line
+    # urgent (3d, critical tier) is listed before later (45d, info tier)
     assert text.index("urgent.com") < text.index("later.com")
 
 
@@ -184,12 +190,10 @@ def test_run_digests_idempotent_per_day(make_company, make_project, make_domain)
         redis = get_redis()
         try:
             async with SessionLocal() as s:
-                first = await run_digests(
-                    s, redis, now_kyiv=now, send=lambda cid, t: sent.append(cid)
-                )
+                first = await run_digests(s, redis, now_kyiv=now, send=lambda cid: sent.append(cid))
             async with SessionLocal() as s:
                 second = await run_digests(
-                    s, redis, now_kyiv=now, send=lambda cid, t: sent.append(cid)
+                    s, redis, now_kyiv=now, send=lambda cid: sent.append(cid)
                 )
             return first, second
         finally:
@@ -213,8 +217,179 @@ def test_run_digests_only_at_matching_time(make_company, make_project, make_doma
         redis = get_redis()
         try:
             async with SessionLocal() as s:
-                return await run_digests(s, redis, now_kyiv=now, send=lambda cid, t: None)
+                return await run_digests(s, redis, now_kyiv=now, send=lambda cid: None)
         finally:
             await redis.aclose()
 
     assert _run(run()) == []  # not this minute
+
+
+def test_detects_word_plural():
+    from app.services.digest import _detects_word
+
+    assert _detects_word(1) == "детект"
+    assert _detects_word(3) == "детекта"
+    assert _detects_word(6) == "детектов"
+    assert _detects_word(11) == "детектов"
+    assert _detects_word(21) == "детект"
+
+
+def test_expiry_days_recomputed_from_live_date(make_company, make_project, make_domain):
+    """The fix: days come from the domain's live expiry_date, not the frozen payload."""
+    from datetime import timedelta
+
+    acme = make_company(code="acme")
+    p1 = make_project(acme, code="web")
+    future = datetime.now(UTC) + timedelta(days=360)  # actually ~1 year out
+    did = make_domain(p1, fqdn="renewed.com", expiry_date=future)
+
+    async def add():
+        async with SessionLocal() as s:
+            s.add(
+                AlertEvent(
+                    domain_id=did,
+                    kind="expiry",
+                    dedupe_key="k",
+                    severity="high",
+                    state="active",
+                    fired_at=datetime.now(UTC),
+                    payload_json={"days": 1, "threshold": 7},  # stale "1 day" from fire time
+                )
+            )
+            await s.commit()
+
+    _run(add())
+    ch = _make_channel(company_id=acme)
+
+    async def compose():
+        async with SessionLocal() as s:
+            return await compose_digest(s, await s.get(NotificationChannel, ch))
+
+    text = render_plain(_run(compose()))
+    assert "renewed.com" in text
+    assert "60+ дней" in text  # re-bucketed by recomputed days, not the stale "1 day"
+    assert "≤7 дней" not in text  # no longer in the critical band
+    assert "вероятно продлён" in text  # flagged as stale (more days than the fired threshold)
+
+
+def test_render_discord_structure(make_company, make_project, make_domain):
+    acme = make_company(code="acme")
+    p1 = make_project(acme, code="web")
+    d = make_domain(p1, fqdn="crit.com")
+    _add_event(d, days=2)  # critical (≤7)
+    ch = _make_channel(company_id=acme)
+
+    async def compose():
+        async with SessionLocal() as s:
+            return await compose_digest(s, await s.get(NotificationChannel, ch))
+
+    bodies = render_discord(_run(compose()))
+    assert len(bodies) == 1
+    embeds = bodies[0]["embeds"]
+    assert embeds[0]["title"] == "Ежедневная сводка"  # lead embed
+    assert embeds[0]["color"] == 0xE5484D  # red — a critical alert is present
+    assert any("Критично" in e.get("title", "") for e in embeds[1:])
+    assert "crit.com" in str(embeds)  # domain rendered in a field
+
+
+def test_render_telegram_html(make_company, make_project, make_domain):
+    acme = make_company(code="acme")
+    p1 = make_project(acme, code="web")
+    d = make_domain(p1, fqdn="tg.com")
+    _add_event(d, days=2)
+    ch = _make_channel(company_id=acme)
+
+    async def compose():
+        async with SessionLocal() as s:
+            return await compose_digest(s, await s.get(NotificationChannel, ch))
+
+    html_text = render_telegram_html(_run(compose()))
+    assert "<b>" in html_text
+    assert '<a href="' in html_text and "tg.com" in html_text
+
+
+def test_render_discord_respects_size_limits():
+    """A mixed-kind, high-volume tier must be split so no embed/message exceeds Discord's
+    6000-char / 10-embed / 25-field / 1024-value caps."""
+    from app.services.digest import (
+        Digest,
+        DigestGroup,
+        DigestRow,
+        DigestTier,
+        _embed_size,
+        render_discord,
+    )
+
+    groups = []
+    for order, emoji, title in [
+        (0, "💀", "Просрочены"),
+        (1, "🔴", "Истекают ≤7 дней"),
+        (5, "🔒", "Истекает SSL"),
+        (6, "🚨", "VirusTotal"),
+        (7, "🔴", "Health-check недоступны"),
+        (8, "🛡️", "Смена NS"),
+    ]:
+        rows = [
+            DigestRow(
+                fqdn=f"domain-{order}-{i}.example.com",
+                kind="expiry",
+                days=1,
+                url=f"https://dg.example/domains/{order}{i}",
+                account="Account",
+            )
+            for i in range(20)
+        ]
+        groups.append(DigestGroup(order, emoji, title, rows))
+    d = Digest(
+        scope_name="Big",
+        dashboard_url="https://dg.example",
+        generated_label="x",
+        total=120,
+        tiers=[DigestTier("crit", 0xE5484D, "🔴", "Критично", groups)],
+    )
+    messages = render_discord(d)
+    assert len(messages) >= 1
+    for m in messages:
+        assert len(m["embeds"]) <= 10
+        assert sum(_embed_size(e) for e in m["embeds"]) <= 6000  # per-message cap
+        for e in m["embeds"]:
+            assert _embed_size(e) <= 6000  # per-embed cap
+            assert len(e.get("fields", [])) <= 25
+            for f in e.get("fields", []):
+                assert len(f["value"]) <= 1024
+
+
+def test_telegram_html_escapes_href():
+    from app.services.digest import (
+        Digest,
+        DigestGroup,
+        DigestRow,
+        DigestTier,
+        render_telegram_html,
+    )
+
+    d = Digest(
+        scope_name="S",
+        dashboard_url='https://x/?a=1&b=2"z',
+        generated_label="g",
+        total=1,
+        tiers=[
+            DigestTier(
+                "crit",
+                0,
+                "🔴",
+                "Критично",
+                [
+                    DigestGroup(
+                        1,
+                        "🔴",
+                        "g",
+                        [DigestRow(fqdn="a.com", kind="expiry", days=1, url='https://x/d/1?q="&x')],
+                    )
+                ],
+            )
+        ],
+    )
+    out = render_telegram_html(d)
+    assert "&quot;" in out and "&amp;" in out  # href escaped for attribute context
+    assert 'href="https://x/?a=1&b=2"z"' not in out  # raw unescaped href absent

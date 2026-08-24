@@ -242,6 +242,35 @@ async def send_to_channel(
         return False
 
 
+async def send_digest_to_channel(
+    session: AsyncSession,
+    redis: aioredis.Redis,  # noqa: ARG001 — reserved for a per-bot send limiter
+    channel: NotificationChannel,
+    digest: object,
+    *,
+    client=None,
+) -> bool:
+    """Render+send a structured Digest natively per channel (with retry) and log it."""
+    impl = await _build_impl(session, channel, client=client)
+    if impl is None:
+        _log_delivery(session, channel.id, None, "failed", "not configured")
+        await session.commit()
+        return False
+
+    try:
+        await with_retry(
+            lambda: impl.send_digest(digest), retries=3, exceptions=(ChannelTransientError,)
+        )
+        _log_delivery(session, channel.id, None, "sent", None)
+        await session.commit()
+        return True
+    except (RetryError, ChannelError) as exc:
+        log.warning("channel %s digest delivery failed: %s", channel.id, exc)
+        _log_delivery(session, channel.id, None, "failed", str(exc))
+        await session.commit()
+        return False
+
+
 def _log_delivery(session, channel_id, alert_event_id, status, error) -> None:
     session.add(
         NotificationLog(
