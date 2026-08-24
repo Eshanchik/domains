@@ -1,9 +1,11 @@
 """Alert engine: evaluate checks → dedup'd AlertEvents → (instant) notifications.
 
-Default thresholds (SPEC FR-AL-3): expiry 60/30/14/7/1, ssl 30/14/7/3/1. At most one
-active event per (domain, kind, threshold) — crossing a tighter threshold fires a new
-event, repeated runs at the same band do not (dedup). Severity high (VT malicious,
-health down, expiry ≤ 7) is dispatched instantly; the rest wait for the daily digest.
+Default thresholds (SPEC FR-AL-3): expiry 30/7/1, ssl 30/14/7/3/1. At most one active
+event per (domain, kind, threshold) — crossing a tighter threshold fires a new event,
+repeated runs at the same band do not (dedup). Severity high (VT malicious, health down,
+expiry ≤ 7) is dispatched instantly; the rest wait for the digest. Each event is delivered
+exactly once (``notified_at``): instant dispatch or the first digest marks it, so it is
+never repeated in later daily digests — a new threshold crossing is a new event.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as aioredis
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.alert import AlertEvent
@@ -26,7 +28,7 @@ from app.services import notifications as notif
 
 log = logging.getLogger("services.alerts")
 
-EXPIRY_THRESHOLDS = (60, 30, 14, 7, 1)
+EXPIRY_THRESHOLDS = (30, 7, 1)  # warn at 30 / 7 / 1 days before expiry, once per band
 SSL_THRESHOLDS = (30, 14, 7, 3, 1)
 
 
@@ -324,6 +326,20 @@ def build_message(
     return f"{sev} · {event.kind}\n🌐 {fqdn}{loc}"
 
 
+async def mark_events_notified(
+    session: AsyncSession, event_ids: list[int], *, now: datetime | None = None
+) -> None:
+    """Mark alert events as delivered so the digest never re-sends them (deliver-once)."""
+    if not event_ids:
+        return
+    await session.execute(
+        update(AlertEvent)
+        .where(AlertEvent.id.in_(event_ids))
+        .values(notified_at=now or datetime.now(UTC))
+    )
+    await session.commit()
+
+
 async def dispatch_instant(
     session: AsyncSession,
     redis: aioredis.Redis,
@@ -331,8 +347,11 @@ async def dispatch_instant(
     events: list[AlertEvent],
     *,
     send: Callable[[int, str, int], None] | None = None,
+    now: datetime | None = None,
 ) -> int:
-    """Deliver high-severity events immediately to resolved channels. Returns count sent."""
+    """Deliver high-severity events immediately to resolved channels. Returns count sent.
+
+    A dispatched event is marked ``notified_at`` so the daily digest won't repeat it."""
     high = [e for e in events if e.severity == "high"]
     if not high:
         return 0
@@ -346,12 +365,15 @@ async def dispatch_instant(
 
     project, company = await domain_location(session, domain)
     account = await account_label(session, domain)
+    ts = now or datetime.now(UTC)
     count = 0
     for event in high:
         text = build_message(event, domain, project=project, company=company, account=account)
         for channel in channels:
             send(channel.id, text, event.id)
             count += 1
+        event.notified_at = ts  # delivered instantly → keep it out of the digest
+    await session.commit()
     return count
 
 
@@ -431,7 +453,7 @@ async def evaluate_after_check(
     else:
         return []
     await session.commit()
-    await dispatch_instant(session, redis, domain, events, send=send)
+    await dispatch_instant(session, redis, domain, events, send=send, now=now)
     return events
 
 

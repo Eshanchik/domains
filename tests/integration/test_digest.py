@@ -393,3 +393,27 @@ def test_telegram_html_escapes_href():
     out = render_telegram_html(d)
     assert "&quot;" in out and "&amp;" in out  # href escaped for attribute context
     assert 'href="https://x/?a=1&b=2"z"' not in out  # raw unescaped href absent
+
+
+def test_digest_delivers_each_alert_once(make_company, make_project, make_domain):
+    """Deliver-once: after a digest is sent (events marked notified_at), the same active
+    alert is not repeated in the next digest — the daily-repeat spam is gone."""
+    from app.services.alerts import mark_events_notified
+
+    acme = make_company(code="acme")
+    p1 = make_project(acme, code="web")
+    d = make_domain(p1, fqdn="once.com")
+    _add_event(d)  # active, notified_at NULL
+    ch = _make_channel(company_id=acme)
+
+    async def run():
+        async with SessionLocal() as s:
+            dig1 = await compose_digest(s, await s.get(NotificationChannel, ch))
+            await mark_events_notified(s, dig1.event_ids)  # simulate a successful send
+        async with SessionLocal() as s:
+            dig2 = await compose_digest(s, await s.get(NotificationChannel, ch))
+        return dig1, dig2
+
+    dig1, dig2 = _run(run())
+    assert dig1 is not None and "once.com" in render_plain(dig1)
+    assert dig2 is None  # already delivered → not repeated the next day
