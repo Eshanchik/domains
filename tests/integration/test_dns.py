@@ -130,3 +130,72 @@ def test_unresolvable_is_stale(make_company, make_project, make_domain, monkeypa
             await redis.aclose()
 
     assert _run(run()) == "stale"
+
+
+def test_empty_ns_snapshot_is_not_a_baseline(make_company, make_project, make_domain, monkeypatch):
+    """A failed/stale DNS check (empty NS) must not become a comparison baseline — the
+    recovery to the SAME real NS must not fire a false ns_change (the migration storm)."""
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="example.com")
+
+    async def run():
+        redis = get_redis()
+        try:
+            _patch(monkeypatch, ["a.ns.example", "b.ns.example"])  # real NS
+            async with SessionLocal() as s:
+                await run_dns_check(s, redis, dom)
+                await evaluate_dns(s, await s.get(Domain, dom))
+                await s.commit()
+            _patch(monkeypatch, [], a=[])  # resolver outage → empty snapshot
+            async with SessionLocal() as s:
+                await run_dns_check(s, redis, dom)
+                ev_empty = await evaluate_dns(s, await s.get(Domain, dom))
+                await s.commit()
+            _patch(monkeypatch, ["a.ns.example", "b.ns.example"])  # recovery, same NS
+            async with SessionLocal() as s:
+                await run_dns_check(s, redis, dom)
+                ev_recover = await evaluate_dns(s, await s.get(Domain, dom))
+                await s.commit()
+            async with SessionLocal() as s:
+                active = (
+                    await s.execute(
+                        select(func.count())
+                        .select_from(AlertEvent)
+                        .where(AlertEvent.kind == "ns_change", AlertEvent.state == "active")
+                    )
+                ).scalar_one()
+            return len(ev_empty), len(ev_recover), active
+        finally:
+            await redis.aclose()
+
+    n_empty, n_recover, active = _run(run())
+    assert n_empty == 0  # empty snapshot never fires
+    assert n_recover == 0  # recovery compares real-vs-real (same) → no false alarm
+    assert active == 0
+
+
+def test_real_ns_change_through_outage_still_fires(
+    make_company, make_project, make_domain, monkeypatch
+):
+    """A genuine NS change separated by a transient empty snapshot must still fire
+    (compare the two most recent NON-empty snapshots)."""
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="example.com")
+
+    async def run():
+        redis = get_redis()
+        try:
+            for ns in (["a.ns.example"], [], ["evil.ns.attacker"]):
+                _patch(monkeypatch, ns, a=[] if not ns else None)
+                async with SessionLocal() as s:
+                    await run_dns_check(s, redis, dom)
+                    ev = await evaluate_dns(s, await s.get(Domain, dom))
+                    await s.commit()
+            return ev
+        finally:
+            await redis.aclose()
+
+    ev = _run(run())
+    assert len(ev) == 1 and ev[0].kind == "ns_change"  # real change still detected

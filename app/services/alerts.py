@@ -209,14 +209,19 @@ async def evaluate_dns(
         select(CheckResult.data_json)
         .where(CheckResult.domain_id == domain.id, CheckResult.type == "dns")
         .order_by(CheckResult.checked_at.desc())
-        .limit(2)
+        .limit(10)
     )
-    snapshots = [row[0] or {} for row in result.all()]
-    if len(snapshots) < 2:
-        return []  # first snapshot — nothing to compare
-    new_ns = sorted(snapshots[0].get("ns") or [])
-    old_ns = sorted(snapshots[1].get("ns") or [])
-    if not new_ns or new_ns == old_ns:
+    # Compare the two most recent snapshots that actually resolved NS. A failed/stale
+    # check stores an empty ns set; it must NOT become a comparison baseline — otherwise
+    # a transient resolver outage (e.g. the worker briefly losing egress after a host
+    # migration) makes every domain's next real snapshot "differ" from the empty one and
+    # fires a storm of false ns_change alerts.
+    ns_history = [sorted((row[0] or {}).get("ns") or []) for row in result.all()]
+    non_empty = [ns for ns in ns_history if ns]
+    if len(non_empty) < 2:
+        return []  # need two real NS snapshots to compare
+    new_ns, old_ns = non_empty[0], non_empty[1]
+    if new_ns == old_ns:
         return []
 
     key = f"{domain.id}:ns_change:{'|'.join(new_ns)}"
