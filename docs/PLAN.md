@@ -3,6 +3,10 @@
 > Правила: одна задача = одна ветка `task/NN-name` = один PR. Definition of Done —
 > в `CLAUDE.md`. После выполнения задачи: поставить `[x]`, дату, короткое примечание.
 > Не выходить за рамки задачи; находки — в Backlog внизу.
+>
+> **Текущий фокус (сентябрь 2026):** Фазы 12–15 (T64–T96) — дорожная карта «до полностью
+> удобного внутреннего продукта». Основание и прод-срез — `docs/RESEARCH-2026-09.md`.
+> Порядок внутри фазы = приоритет; начинать с Фазы 12.
 
 ## Фаза 0 — Каркас
 
@@ -991,6 +995,411 @@
   раз в ближайшую сводку. Итог: каждый переход порога = одно новое событие = одна доставка. Тесты +2
   (`test_digest_delivers_each_alert_once`, `test_expiry_no_alert_beyond_30_days`) + обновлён
   crossing-тест под новые бэнды. Миграция `a1b2c3d4e5f6`.
+
+
+### Пропущенные в журнале задачи (восстановлено по PR, сентябрь 2026)
+
+_Номера T57–T59 не использовались. Задачи ниже были сделаны в августе, но не записаны в PLAN.md._
+
+- [ ] **T56. Деплой через ops-adera (Komodo + Ansible), переезд DigitalOcean → OVH.** _(ветка `task/56-deploy-komodo`, не смержена)_
+  Прод развёрнут из отдельного репозитория `Eshanchik/ops-adera` (роль `domains`, `compose.yml.j2`,
+  Semaphore «Deploy domains», образ `ghcr.io/eshanchik/domains`). Инцидент после переезда: воркер
+  был только в `internal`-сети без egress → `[Errno -3]` на RDAP/регистраторах; исправлено в
+  ops-adera PR #1 (сеть `egress` для worker). Внешний IP для whitelist Namecheap — `141.95.34.21`
+  (egress), не `51.89.46.32` (inbound). Документация приложения (DEPLOY.md, SPEC NFR-6) ещё
+  описывает DigitalOcean — закрывается в T74.
+- [x] **T60. Редактирование аккаунта регистратора (Client IP + креды).** _(2026-08-24)_
+  После переезда сменился IP → Namecheap отвечал ошибкой. `registrars.update_account` (пустые
+  креды = оставить прежние; `CredentialDecryptError` вместо затирания нечитаемого блоба; сброс
+  `status/last_error`), GET/POST `/registrars/{id}/edit`, валидация IP. Тесты happy/error.
+- [x] **T61. Богатая сводка алертов (Severity-Board).** _(2026-08-24)_
+  Структурный `Digest` (tiers/groups/rows) + рендеры под канал: Discord embeds по тирам с
+  цветом, Telegram HTML, plain; дни пересчитываются на момент отправки; auto-renew/аккаунт/ссылка
+  в каждой строке. Планировщик только ставит `send_digest` в очередь, воркер (с egress) компонует
+  и шлёт. Ревью: лимит 6000 символов Discord, экранирование href. Тесты +7.
+- [x] **T62. ns_change: не сравнивать с пустым NS-baseline.** _(2026-08-24)_
+  Шторм из 282 ложных `ns_change` (`old_ns=[]`) — снапшоты без NS в окне без egress становились
+  базой сравнения. `evaluate_dns` сравнивает два последних **непустых** снапшота. На проде
+  ложные события заресолвлены SQL-ом. Тесты +2.
+
+## Фаза 12 — Гигиена и безопасность (P0)
+
+_Цель: после этой фазы «тихо в канале» означает «всё хорошо», а не «сломалось». Мониторинг не
+останавливается молча, алерты не теряются, мёртвый парк не маскирует живые проблемы, доступ
+восстановим, деплой и бэкапы подтверждены, документация совпадает с продом. Основание —
+`docs/RESEARCH-2026-09.md`. Порядок = приоритет. Оценка: 4–5 недель._
+
+- [ ] **T64. Архив = полная остановка мониторинга домена.** _(P0 · S)_
+  `enqueue_due` выбирает CheckSchedule без join на `Domain.is_active`, при архивации расписание не
+  удаляется, `evaluate_after_check`/`dispatch_instant` не проверяют архив → на следующий день
+  RDAP заново рождает HIGH «истекает через −1638 дн.», VT/RDAP-квоты жгутся на кладбище.
+  Скоуп: `set_archived`/`bulk_archive`/`archive_expired`/MCP `set_domain_archived` удаляют
+  CheckSchedule и выключают HealthCheck; unarchive → `backfill_schedules`; join `is_active` в
+  `enqueue_due*`; ранний return в `_run`/`evaluate_after_*`/`dispatch_instant`;
+  `scripts/prune_archived_schedules.py` (dry-run/--apply) + резолв скрытых active-событий на архиве.
+  Приёмка: тесты «архив → нет enqueue/событий/диспатча; unarchive → расписание есть»; на проде
+  0 строк `check_schedule` у `is_active=false`.
+- [ ] **T65. Жизненный цикл домена: liveness, авто-архив по правилу, «кандидаты в архив».** _(P0 · L)_
+  Прод: **128 из 333 активных доменов (38%) неделю не резолвятся** — ~33 не зарегистрированы
+  (RDAP/WHOIS «No match»), ~70 без единой DNS-записи; они дают 49% SSL-«ошибок», 21% DNS-stale,
+  ложные expiry-алерты и три ручные чистки (T47, T55, 24.08). У домена нет жизненного цикла кроме
+  `is_active`; синк не замечает домены, исчезнувшие из аккаунта; `archive_expired` — ручной dry-run.
+  Скоуп: миграция `Domain.liveness (live|undelegated|unregistered|expired)`, `renewal_decision
+  (renew|let_expire|undecided)`, `last_seen_in_registrar_at`, `archived_at`, `archive_reason`;
+  liveness выводится из проверок (RDAP 404/«No match» N раз подряд → unregistered; DNS без записей
+  N дней → undelegated; NXDOMAIN в SSL/DNS различать от таймаута); для `undelegated/unregistered`
+  не планировать SSL/health/VT (только RDAP раз в неделю); синк пишет `last_seen`, 2 синка подряд
+  без домена → кандидат; учёт Namecheap `IsExpired`; ежедневная задача авто-архива с grace
+  (Setting, дефолт 30 дн.; условие: expiry < now−N **или** unregistered ≥ N дн., и не auto_renew)
+  с аудитом `archive_auto` и строкой «🗄 автоархив: N» в дайджесте; `let_expire` → без expiry-
+  алертов + архив на expiry+1d; аномалия «auto_renew=true, но истёк» как alert kind; тайл
+  «Просрочено» + expiring только для будущих дат; фильтр/колонка liveness в /domains; страница
+  «Кандидаты в архив» (причина, «Архивировать все») вместо CLI; SPEC §3.2. Связано с T81
+  (недостижимый хост ≠ warn). Приёмка: тесты правила по каждому сигналу и grace; на проде после
+  прогона доля SSL-«ошибок» < 10%, в Discord нет алертов по кладбищу.
+- [ ] **T66. Покрытие каналами: компании без канала, баннер, глобальный fallback.** _(P0 · S)_
+  Прод: единственный канал — Adera; **GT1 (266 доменов, 80% парка) и Antares без канала, 104 из
+  122 активных алертов не доставлены никому**; `resolve_channels` молча уходит в пусто. Канал GT1
+  существовал (T54/T55) и был удалён — судя по всему, из-за спама; возвращать после T64/T65.
+  Скоуп: баннер на дашборде «N активных алертов без канала доставки» со ссылкой; на /channels —
+  панель «Покрытие» (компания/проект → каналы; красная строка «нет канала» + число алертов в
+  скоупе); опция «глобальный fallback-канал получает алерты компаний без своего канала» (Setting,
+  явно, по умолчанию выкл.) — с пометкой компании в сообщении; при создании канала — чекбокс
+  «отправить текущее состояние сейчас»; MCP `system_status` отдаёт `companies_without_channel`.
+  Приёмка: тесты покрытия и fallback-маршрутизации; для GT1 без канала баннер виден.
+- [ ] **T67. Источники полей: manual-ловушка expiry_date, порядок доверия, «вернуть авто».** _(P0 · M)_
+  `web/domains.py:406-411` кладёт naive datetime, `services/domains.py:162` сравнивает aware≠naive →
+  любое сохранение формы (даже ради тега) помечает `expiry_date=manual`, после чего RDAP и синк
+  никогда не обновляют дату (`checks/expiry.py:55`, `registrars.py:341`); источники нигде не
+  показаны. Параллельно RDAP и API регистратора перетирают друг друга по дате до 5 раз в день.
+  Скоуп: парсинг даты формы tz-aware и сравнение по календарному дню; форма шлёт только
+  изменённые поля; `services/merge.py` с приоритетом `manual > api-<registrar> > rdap > whois >
+  csv`, толерантность по дню для дат, сортировка nameservers; `expiry_verified_at/by`; бейдж
+  источника у каждого авто-поля в DOSSIER + «вернуть авто-обновление» (сброс ключа, enqueue rdap,
+  аудит) и MCP `reset_field_source`; `scripts/repair_manual_expiry.py` (dry-run/--apply); SPEC §3.2.
+  Приёмка: тест «сохранение notes не меняет expiry_date/field_sources/history»; кросс-источниковые
+  тесты; скрипт-ремонт прогнан на проде с отчётом.
+- [ ] **T68. Доставка at-least-once: учёт per-(канал, событие), ретраи, подхват в дайджест.** _(P0 · M)_
+  `dispatch_instant` ставит `notified_at` до реальной отправки (`alerts.py:370-376`), а
+  `send_to_channel` глотает ошибки и возвращает False — при сбое канала/потере egress high-алерт
+  теряется навсегда. Глобальный `notified_at` не различает каналы (граница из Backlog T63).
+  Скоуп: `NotificationLog` — источник правды (индекс `(channel_id, alert_event_id,
+  delivery_status)`, per-event строки, для дайджеста через `digest_id`); `dispatch_instant` не
+  трогает `notified_at`; актор `send_notification` бросает на транзиентных ошибках → Dramatiq
+  retries (max 5, backoff 60 с…1 ч); `compose_digest(channel)` = активные события в скоупе без
+  строки `sent` для **этого** канала; claim дайджеста снимается при неудаче; `notified_at` →
+  deprecated; метрика `dg_notifications_total{status,channel_type}`; бейдж «не доставлено» +
+  «повторить» на алерте. Приёмка: тесты «канал 5xx → событие в следующем дайджесте», «новый канал
+  получает открытый бэклог ровно один раз», «два пересекающихся скоупа — каждый ровно один раз».
+- [ ] **T69. Планировщик: defer-not-drop, равномерный spread, VT-бюджет в настройках.** _(P0 · M)_
+  `next_check_at` сдвигается на interval+jitter до диспатча, а при `rate_limited`/
+  `budget_exhausted`/`circuit_open` проверка ничего не пишет и не переставляется → после любого
+  бэклога большинство VT-проверок выпадает на неделю без сигнала; backfill даёт всем один
+  `next_check_at`. Скоуп: лимитер/breaker возвращают `retry_after`; воркер пишет `deferred` и
+  ставит `next_check_at = now + retry_after` (cap 1 ч); backfill раскладывает по [0, interval);
+  бюджет типа за тик (vt ≤ 3/мин); VT PER_MIN/DAILY в Settings (пресеты free/premium); VT 404 →
+  «нет данных», не «✔ чисто»; `dg_check_results_total{type,status}` + тайл «очередь проверок /
+  VT N из 500» на дашборде; обработка `checks.DQ`. Приёмка: тест «1000 VT при 4/мин проходят
+  ≤7 дней без потерь»; старый drop-тест переписан.
+- [ ] **T70. Hardening проверок: catch-all → stale, bootstrap fallback, WHOIS-лимит, punycode, синк с retry.** _(P0 · M)_
+  `load_bootstrap` не оборачивает ConnectError в RdapError, в `_run` воркера нет catch-all → при
+  потере egress актор падает, stale не пишется, breaker не открывается (инцидент после переезда);
+  WHOIS-fallback без лимитера; IDN уходят наружу как Unicode; один 5xx регистратора красит
+  аккаунт в error на 6 часов. Скоуп: транспортные/JSON-ошибки → RdapError/VtError; last-good
+  bootstrap в Redis; Retry-After на 429; catch-all в `run_*_check`/`_run`/`_run_healthcheck` →
+  `write_result(stale)` + `record_failure` + `log.exception`; лимитер `rl:whois:{tld}` + breaker;
+  `domain.punycode` во все внешние вызовы; результат без expiry → `warn` с причиной; DNS: NXDOMAIN /
+  SERVFAIL / timeout различать (нужно T65); `conn.list_domains()` через limiter/breaker/retry,
+  транзиентные ≠ error (подсказка «добавьте IP в whitelist»); dedupe_key ns_change через
+  `sha1(sorted ns)[:16]`. Приёмка: тесты на каждый сценарий; правило CLAUDE.md «ошибка внешнего
+  сервиса никогда не роняет воркер» покрыто акторным тестом через StubBroker.
+- [ ] **T71. Наблюдаемость самого DomainGuard: heartbeat, метрики, канарейка egress, dead-man, правила Grafana.** _(P0 · M)_
+  /metrics отдаёт только counts и breaker'ы; healthcheck воркера = `redis.ping()`; в ops-adera нет
+  ни одного правила на `dg_*` — зависший планировщик или воркер без сети обнаруживаются по шторму
+  или по тишине. Скоуп: `scheduler:last_tick` в Redis; метрики `dg_scheduler_last_tick_age_seconds`,
+  `dg_queue_depth{queue}` (+DQ), `dg_checks_overdue_total`, `dg_domains_stale_total{type}`,
+  `dg_notifications_failed_total`, `dg_retention_last_run_timestamp`, `dg_egress_ok`; канарейка
+  (DNS+HTTPS к 2 известным хостам раз в тик → флаг `net:ok`): при красной проверки пишут
+  `stale(worker_offline)`, HC не инкрементируют счётчик, SSL unreachable → stale, `evaluate_ssl`
+  не резолвит при `valid_to=None`; один ops-алерт «воркер без сети»/«восстановлено»; dead-man
+  (пинг healthchecks.io раз в 5 мин, URL в Settings). ops-adera: scrape `domains-worker:9191`,
+  правила (tick age > 5m, overdue > 50, stale > 10%, CB open > 30m, DQ > 0, failed notifications),
+  панели; раздел «как понять, что проверки идут» в docs. Приёмка: тест «egress пропал на час →
+  0 ложных событий, 1 ops-алерт»; на проде правило срабатывает при остановке scheduler.
+- [ ] **T72. Break-glass восстановление доступа: `scripts/manage.py`, защита последнего админа.** _(P0 · S)_
+  `ensure_admin` не меняет пароль существующему логину, сброс — только другим админом; админ уже
+  запирался (выход — psql + ручной argon2). `update_user` позволяет деактивировать себя и
+  последнего admin. Скоуп: `scripts/manage.py` (`reset-password <login>` из stdin/env, `set-role`,
+  `unlock`, `disable-2fa`, `activate`, `list-users`) с аудитом `source=cli`; глагол `manage` в
+  entrypoint + `make manage`; `create_admin --reset-password`; guard «нельзя деактивировать/
+  понизить себя и последнего admin»; при CryptoError TOTP — понятная ошибка без lockout; раздел
+  «Аварийное восстановление доступа» в README/DEPLOY/ops-adera. Приёмка: тест на каждую команду
+  и guard.
+- [ ] **T73. Безопасный деплой и подтверждённые бэкапы: sha-теги, дамп перед миграцией, canary мастер-ключа, restore-drill, ротация ключа.** _(P0 · L)_
+  build.yml тегирует только latest/branch; migrate = безусловный `upgrade head` без дампа;
+  post-deploy smoke = /healthz без БД; все CryptoError глотаются, /readyz не знает о ключе — с
+  новым `.env` система «здорова» при молча мёртвых VT/Telegram/регистраторах/2FA; restore ни разу
+  не репетировался. Скоуп: `type=sha` в build.yml; ops-adera: pg_dump `predeploy-<tag>` (3
+  генерации) перед compose up, поллинг /readyz==200 и `tick_age < 90`; правило «data-миграции
+  репетируются на копии дампа»; crypto: пустой/невалидный ключ в production → отказ старта,
+  Setting `crypto_canary` + `/readyz master_key: ok|mismatch` (503) + метрика,
+  `MultiFernet([KEY, KEY_PREVIOUS])` + `scripts/rotate_master_key.py`; WARNING со счётчиком
+  нерасшифровываемых записей при старте; `DG_ADMIN_*` только в migrate; `.deploy-secrets` в
+  .gitignore; restore-drill с записью результата и квартальным шаблоном; docs «Ротация ключа».
+  Приёмка: тесты canary/readyz/rotate; drill выполнен; в GHCR есть sha-тег.
+- [ ] **T74. Синхронизировать документацию с кодом и продом; убрать опасные устаревшие скрипты деплоя.** _(P0 · S)_
+  SPEC/README/DEPLOY/pg_dump.sh описывают DigitalOcean и `deploy.sh` с certbot на :80 (на OVH
+  сломает Traefik); SPEC — пороги 60/30/14/7/1 и «Telegram MVP» при коде 30/7/1 + Discord;
+  .env.example неполный; MCP.md не знает про OAuth. Скоуп: SPEC §3 FR-AL-3/4 (30/7/1, deliver-
+  once, напоминания crit в дайджесте — решение), NFR-6 → OVH/pg_dump+restic, §11 (пороги,
+  NS-baseline, архив, Discord, 2FA/Google/MCP OAuth/scopes, авто-архив с grace — решение);
+  DEPLOY.md → «прод из ops-adera», runbook «после переезда: проверить egress воркера»; README
+  (локальный запуск, каналы, seed, восстановление доступа); `scripts/deploy.sh`,
+  `docker-compose.prod.yml`, `docker/nginx/prod.conf` — удалить или DEPRECATED с отказом
+  запускаться; `.env.example` полный; Backlog: убрать «обёртку админ-страниц в ui.panel» (сделано
+  в T40); DoD-правило «ветка task/* меняет PLAN.md» + CI-проверка; ops-adera: таблица «кто ходит
+  наружу». Приёмка: новый разработчик поднимает локально и понимает прод по README/DEPLOY.
+
+## Фаза 13 — Ежедневное удобство (P1)
+
+_Цель: UI из «реестра с CRUD» становится рабочим местом ops-инженера и менеджера: обратная связь
+на каждое действие, реальный триаж алертов, списки и дайджест без кладбища, карточка с причинами
+и действиями, self-service профиль. Оценка: 6–8 недель. Задачи L — по 2 PR._
+
+- [ ] **T75. Слой обратной связи и ошибок: flash, HTML 403/404/500, дружелюбные ошибки форм, confirm.** _(P1 · M)_
+  Почти все POST → 303 молча; ошибки — raw PlainText/JSON; удаление компании/проекта с доменами
+  → 500; дубликат login/email → 500; `?sync=`/`?pay=` не читаются; bulk-архив и «Отправить
+  сейчас» без confirm. Скоуп: `core/flash.py` (подписанная одноразовая cookie) + вывод в base.html
+  во всех роутерах; exception handlers 403/404/500/IntegrityError в терминальном стиле; русские
+  ошибки форм (невалидный scope → 422); блокировка удаления с доменами; confirm с числом строк
+  на bulk/архив/тег, с именем канала на «Отправить сейчас»/«Переслать»; hx-on проверяет
+  `successful`; return-to-URL после bulk; select-all. Приёмка: happy+error тест на каждую форму;
+  ни один web-роут не отдаёт PlainText/JSON-ошибку.
+- [ ] **T76. Workflow алертов: ack/snooze/ответственный, массовые действия, история, напоминания crit в дайджесте.** _(P1 · L)_
+  «Резолв» на expiry/VT/SSL = 24-часовой snooze с повторной доставкой (`_ensure_active`
+  пересоздаёт по тому же dedupe_key); состояния только active|resolved; /alerts без пагинации/
+  поиска/чекбоксов; deliver-once превратил дайджест в «дельту»: просроченные/≤1 день/VT/health
+  down приходят один раз и замолкают, «Отправить сейчас → нечего» врёт. Скоуп: миграция
+  `acked_at/acked_by_id/snoozed_until/assignee_id/resolution_note/resolved_by`; `_ensure_active` не
+  пересоздаёт при `snoozed_until > now`, если порог не ужесточился; вкладки «Активные | Отложенные
+  | История» с пагинацией/поиском, массовые ack/резолв/snooze 3/7/30/архивировать; inline «Взял в
+  работу / Отложить / Продлили-ожидаемо»; колонка «Кто», дефолтный assignee =
+  `Project.responsible_user_id`; словарь `alert_kind_ru/severity_ru`; тайл SSL → `/alerts?kind=ssl`.
+  Дайджест: секция «Всё ещё открыто (crit)» с возрастом и ответственным (без snoozed/acked, medium
+  не повторять); шапка «Новых: N · Открытых критичных: M»; send-now: «новых нет, активных N —
+  отправить полную сводку» (режим full, ничего не помечает). MCP `ack_alert/snooze_alert/
+  assign_alert/resolve_alerts(dry_run)`. Приёмка: тесты snooze/секции crit/скоупа массовых
+  операций; 500 активных алертов рендерятся < 1 с.
+- [ ] **T77. Содержательные уведомления: ссылка, ответственный, next action, auto-renew/аккаунт, embed; события восстановления.** _(P1 · S)_
+  `build_message` без URL/auto-renew/аккаунта/ответственного; health_down — «check #17» без URL и
+  ошибки; recovered/продление/VT-чист только резолвят событие — в канале висят незакрытые тревоги.
+  Скоуп: `🔗 {base}/alerts/{id}`, `🔄/🚫/❔ auto-renew`, «👤 Ответственный», подсказка действия по
+  виду; Discord instant как embed с цветом severity, Telegram HTML; событие `health_recovered`
+  (instant); «продлён до …»/«VT чист» — low-строки дайджеста; полный `last_error` синка в title.
+  Приёмка: тесты состава по каждому виду; из Discord на телефоне одно нажатие ведёт на алерт.
+- [ ] **T78. Система и доставка в UI: реальный статус в шапке, панель «Система», журнал отправок, здоровье и редактирование каналов.** _(P1 · M)_
+  «net ok» в шапке — статичный текст; `NotificationLog` пишется, но нигде не показан (SPEC FR-AL-7);
+  на алерте нет «куда/когда ушло»; каналы нельзя редактировать/выключить, `digest_time` без
+  валидации («9:00» ≠ «09:00»). Скоуп: `services/system_status.py` (redis, канарейка, просрочки,
+  возраст последних результатов по типам, breaker'ы, очереди, VT-бюджет, сбои доставки за 24 ч,
+  компании без канала) → индикатор red/amber/green с tooltip + панель «Система» на дашборде;
+  `/notifications` (журнал с фильтрами/пагинацией); блок «Доставка» на алерте с «повторить»;
+  /channels: последняя отправка/ошибка, toggle, edit, названия вместо `#id`; нормализация
+  HH:MM; `run_digests` «должен был уйти сегодня и ещё не ушёл»; тихие часы per-канал для instant
+  expiry/ssl; MCP `system_status/list_channels/test_channel/send_digest_now(dry_run)`. Приёмка:
+  тесты метрик/валидации/догона; SPEC FR-AL-7 закрыт.
+- [ ] **T79. Список доменов v2 + импорт/экспорт v2.** _(P1 · L)_
+  vt_detect/health_down теряются при сортировке/пагинации/экспорте; нет колонок компания/
+  регистратор/дней/алерты (SPEC FR-UI-2); «● up/○ down» — флаг архива; CSV из Excel (BOM, `;`)
+  даёт 100% «пустой FQDN»; re-import не переносит домен в другой проект; экспорт отдаёт
+  project_id числом. Скоуп: все фильтры в `_active_filter_qs`/экспорте + чипы с ×; фильтры
+  регистратор/источник/expired/has_alerts/без цены/ответственный/auto_renew/liveness; колонки
+  компания·проект, регистратор/аккаунт, дней (цвет), цена, алерты, «Статус», свежесть RDAP;
+  счётчики в фильтрах; ссылка на bulk health-check с выборкой; экспорт с именами/заметками/
+  датами; импорт `utf-8-sig` + `csv.Sniffer`, нормализация заголовков, статус `moved`, новые
+  колонки (expiry_date, auto_renew, registrar, responsible_email, renewal_decision, price);
+  теги lower-case + уникальный индекс. Приёмка: цикл «экспорт → Excel → импорт» без ошибок; список
+  отвечает «чьи, где продлевать, сколько дней, есть ли алерты» без клика.
+- [ ] **T80. Карточка и форма домена v2: полный DOSSIER с источниками и причинами, «Проверить сейчас», форма с ответственным/регистратором/auto-renew/ценой, адаптив.** _(P1 · L)_
+  Карточка — посадочная из дайджеста, но не показывает notes/регистратора/аккаунт/компанию/EPP/
+  источники/ответственного; `data_json.error` и per-host SSL нигде не рендерятся; форма не даёт
+  править project/auto_renew/цену/ответственного (`responsible_user_id` на проде = 0 из 333 —
+  поле недостижимо); с телефона — две сжатые колонки. Скоуп: DOSSIER (компания → проект,
+  регистратор/аккаунт, notes, даты, EPP-бейджи, registrant, ответственный, dns_provider, бейдж
+  источника, «подтверждено RDAP N дн. назад»); причина под каждым badge; таблица SSL по хостам;
+  мини-история HC; «последняя удачная проверка» > 3 дн. подсветкой; одна панель алертов с
+  действиями; «Проверить сейчас» с HTMX; форма: проект (скоуп), ответственный, регистратор +
+  аккаунт, auto_renew, блок «Стоимость», `purpose`, `owner_contact`; `parse_rdap` извлекает
+  registrar entity → `registrar_id` source=rdap; авто-`dns_provider` из NS; адаптив
+  (`overflow-x:auto`, `grid-cols-1 md:grid-cols-2`, backdrop сайдбара). Приёмка: менеджер с
+  телефона видит причину «ssl: fail» без логов; ops видит, где продлевать и кому писать.
+- [ ] **T81. SSL и health-check v2: режим проверки, недостижимый хост ≠ warn, вид `ssl_error`; HC с headers/UA/auth, edit/pause/test-run, латентность, идемпотентность.** _(P1 · L)_
+  `hosts_for` всегда добавляет www., недоступный хост → warn, badge списка выбирает произвольную
+  строку — домены без www/сайта вечно «проблема» (прод: 47% ssl warn), а ошибки цепочки при
+  валидных датах не алертятся; HC с UA `python-httpx` режутся WAF → ложные down; повторный
+  `bulk_add_health_check` удваивает чеки. Скоуп: `Domain.ssl_mode (auto|apex_only|custom|off)`;
+  недоступный хост при наличии рабочего → skip; overall по худшему из достижимых; детерминированный
+  `ssl_status_map`; `_latest_ssl_valid_to` игнорирует снапшоты без valid_to; вид `ssl_error`
+  (verify/handshake/unreachable ≥2 подряд, high) с dedupe по типу; HC: headers/user_agent/
+  basic-auth (Fernet)/max_latency_ms; «Проверить» в форме с синхронным превью; edit/pause;
+  идемпотентность `create/bulk_add_template` по (domain_id, url, method). Приёмка: тесты каждого
+  режима и `ssl_error`; на проде число «SSL проблема» падает до реальных сертификатов.
+- [ ] **T82. Профиль и 2FA v2: смена пароля, сессии и «выйти везде», invite-ссылки, backup-коды, сброс 2FA, обязательность для admin.** _(P1 · L)_
+  Пользователи не могут сменить пароль (только admin-only маршрут); сессии без индекса user →
+  смена пароля не отзывает чужие; 2FA без recovery-кодов/сброса, отключается одним POST; на проде
+  2FA у 0 из 3 пользователей при admin-мутациях из интернета. Скоуп: `/profile` (пароль, 2FA,
+  токены, MCP-подключения, сессии «Завершить все»); `session:user:{id}` + `revoke_all` при смене/
+  сбросе пароля, деактивации, отключении 2FA, смене роли; абсолютный TTL 30 дн.; создание
+  пользователя → одноразовая invite-ссылка (TTL 72 ч); `must_change_password`; `last_login_at/ip/
+  method` + колонки в /users; кнопки «Сбросить пароль (ссылка)/Сбросить 2FA/Завершить сессии/
+  Разблокировать»; backup-коды (10, хеши, показ один раз); `/2fa/disable` требует пароль+код;
+  Setting `require_2fa_roles` (admin, grace N дн.); QR inline-SVG; `login_guard` для TOTP-шага;
+  nginx limit_req на `/auth/google/*`; аудит. Приёмка: «пароль сменён → вторая сессия на /login»,
+  invite-поток, backup-код, обязательность 2FA для admin после grace.
+- [ ] **T83. Страница компании для менеджера: состояние, покрытие, «Чего не хватает», названия вместо ID.** _(P2 · M)_
+  Маршрута `/companies/{id}` нет; каналы/пользователи/проекты показывают «компания #3 /
+  project:12»; персона «менеджер компании» не имеет стартовой точки. Скоуп: `/companies/{id}`:
+  проекты, домены (всего/истекает/просрочено), активные алерты, каналы, аккаунты регистраторов,
+  стоимость за год, блок «Чего не хватает» (нет канала / аккаунта / пользователей со скоупом /
+  N без цены / без ответственного) с прямыми ссылками; ссылки с дашборда и /companies; названия
+  вместо ID во всех шаблонах; onboarding-подсказка на пустой компании. Приёмка: тесты агрегатов и
+  скоупа (менеджер видит только свою компанию).
+
+## Фаза 14 — Финансы и отчётность
+
+_Цель: /costs — рабочий инструмент финансиста. Прод: платежей 0, `renewal_price` есть у 202 из
+333 доменов (Namecheap), у GoDaddy и ручных — нет. Оценка: 3 недели._
+
+- [ ] **T84. Курсы валют через НБУ на дату платежа + видимые ошибки формы платежа.** _(P1 · S)_
+  exchangerate.host требует access_key: живой запрос отдаёт 200 с `success:false` → `rates.py`
+  возвращает None → платёж в UAH/EUR молча не сохраняется (`?pay=norate` нигде не рендерится);
+  тесты мокают старый формат. Скоуп: НБУ (`bank.gov.ua/NBUStatService/v1/statdirectory/exchange`)
+  как основной источник на дату платежа, exchangerate.host — опциональный fallback с ключом в
+  Setting; кэш per (currency, day); `Payment.rate_source`; HTMX-превью курса в форме; запрет
+  сохранить без курса; вывод ошибки через flash (T75). Приёмка: respx-тесты ок/таймаут/5xx/
+  `success:false`; интеграционные тесты POST платежа и GET /costs.
+- [ ] **T85. Цены продления для всех регистраторов: справочник цен по TLD на аккаунте, точность Namecheap, bulk «задать цену».** _(P1 · M)_
+  Пайплайн цен только для `namecheap`; 2-уровневые TLD ищутся по последнему лейблу (`co.uk` →
+  `uk`), `AdditionalCost` (ICANN) не учитывается, `force=True` не вызывается. Скоуп: таблица
+  `registrar_account_tld_prices` + форма справочника на аккаунте (и для ручных регистраторов),
+  source `pricebook` (manual приоритетнее); `get_renewal_prices` как опциональный метод
+  коннектора; сопоставление по самому длинному суффиксу; `AdditionalCost`; бейдж «≈ оценка по
+  TLD»; bulk «задать цену/валюту/период»; кнопка «Обновить цены» (force); строка «без цены: N».
+  Приёмка: тесты сопоставления/справочника/bulk; на проде доля активных без цены < 10%.
+- [ ] **T86. Прогноз продлений v2 + экспорт CSV: горизонт, компания × месяц/квартал, итог в USD, авто vs ручная оплата.** _(P1 · M)_
+  `upcoming_renewals` — 30 дней без нижней границы (истёкшие в «ближайших»), только домены с
+  ценой, без итога/конвертации/компании/auto_renew; «по регистраторам» показывает `1, 2, None`;
+  экспорта нет (SPEC решение 8). «Прогноз по кварталам» — главный вопрос финансов. Скоуп:
+  `renewal_forecast(period, group_by)` с `expiry >= now`, конвертацией в USD (≈), нормировкой на
+  12 мес., разрезами компания × месяц/квартал / проект / регистратор / аккаунт, «без цены»,
+  «просрочено»; `/costs` с селекторами и тремя секциями (автопродление / ручная оплата / нет
+  цены); дашборд `cost_usd` с учётом валют и периода; `/costs/payments.csv`, `/costs/summary.csv`,
+  `/costs/forecast.csv` со скоупом; MCP `renewal_forecast`. Приёмка: финансист получает «сколько
+  нужно на квартал по каждой компании» одним экраном и одним CSV.
+- [ ] **T87. Платёж v2 и операция «Продлён»: реквизиты, редактирование/удаление, CSV-импорт, `mark_renewed` в одной транзакции.** _(P1 · L)_
+  `Payment` без invoice_ref/аккаунта/периода/created_by; edit/delete нет; CSV-ввод платежей (T15)
+  не реализован; «отметить продление» — два неатомарных шага, после которых expiry заблокирован
+  как manual; `add_payment` не идемпотентен. Скоуп: миграция `invoice_ref`, `paid_from_account_id`,
+  `period_years`, `created_by_id`; `update/delete_payment` + HTMX-формы + MCP; `import_payments`
+  (CSV с dry-run, идемпотентность по (fqdn, paid_at, amount, invoice_ref)); мягкий дедуп
+  `add_payment` + `idempotency_key`; `mark_renewed(domain_id, …)` в UI (кнопка «Продлён» на
+  карточке и в expiry-алерте) и MCP: платёж → expiry со source `renewal` (перезаписываемый RDAP) →
+  `evaluate_expiry` (алерт закрывается сразу) → enqueue rdap; REST `/api/v1/payments`.
+  Приёмка: тесты edit/delete/импорта/mark_renewed (алерт закрыт сразу, RDAP позже подтверждает,
+  повтор не создаёт второй платёж).
+- [ ] **T88. Сверка «продлён ↔ оплачен» и напоминания «пора платить» с ценой и аккаунтом.** _(P2 · M)_
+  Expiry-алерт не различает автопродление и ручную оплату, не показывает цену/аккаунт; отчёта
+  «продлён без платежа / оплачен, но не продлён» нет. Скоуп: секция «Сверка» на /costs
+  (expiry сдвинулся ≥300 дн. без Payment ±45 дн. → «вероятно продлён» + «Записать платёж»;
+  платёж есть, expiry не изменился 14 дн. → alert `payment_unconfirmed`); строка `💳 цена ·
+  аккаунт · авто/ручная` в expiry-алерте и дайджесте; группа «требует оплаты»; CSV сверки.
+  Приёмка: список «продлены без платежа» за месяц совпадает с выпиской.
+
+## Фаза 15 — Платформа и рост
+
+_Цель: доступ и аудит без дыр, MCP как помощник оператора, REST/вебхуки для интеграций,
+воспроизводимая сборка и честные тесты, данные и коннекторы готовы к 10k доменов. Оценка:
+6–8 недель._
+
+- [ ] **T89. Гигиена доступа и аудит: реальный гейт `mcp_allowed`, срок и скоуп токенов, отзыв MCP-грантов, rate-limit OAuth/API, страница /audit.** _(P1 · L)_
+  `user_may_use_mcp` проверяется только на consent — dg_-токен и refresh обходят флаг; токены
+  бессрочные с полной ролью; `/api`, `/register`, `/token` без rate-limit; аудит нигде не
+  читается, в нём нет входов/resolve/смены секретов, нельзя отличить человека от ассистента.
+  Скоуп: гейт в `_acting_user`/`exchange_refresh_token`/dg_-fallback; индекс `mcpo:user:{id}` +
+  блок «MCP-подключения» с «Отозвать», revoke при деактивации/снятии флага; `ApiToken.expires_at`
+  (90 дн.), `scope(read|write)`; админ-вкладка «Все токены»; nginx limit_req на `/api/`,
+  `/register`, `/token`; contextvar `audit_via (ui|api|mcp|worker)` + `ip/user_agent`;
+  `record_audit` в resolve/sync/mark_notified/login/logout/settings/consent/session_revoke;
+  страница `/audit` (фильтры, поиск, CSV, пагинация), вкладка «История» на карточке домена;
+  retention audit 24 мес; MCP `list_audit`. Приёмка: «кто заархивировал домен» — из UI за минуту.
+- [ ] **T90. MCP как помощник оператора: `attention`, enriched `DomainOut`, полные фильтры, `get_domain` по fqdn, операционные инструменты, аннотации и коды ошибок.** _(P1 · L)_
+  На «что горит?» ассистент отвечает через 3–4 вызова без приоритизации; `list_alerts` без
+  пагинации переполняет контекст при шторме; `_domain_dict` «голый»; bulk/синк/unassigned/теги
+  недоступны; инструменты без аннотаций. Скоуп: `attention(company_id?, project_id?, limit)`;
+  `list_alerts` с фильтрами/пагинацией/`age_days`; единый `DomainOut` (теги, регистратор, аккаунт,
+  проект/компания, ответственный, days_left, статусы проверок, field_sources) для MCP и REST;
+  `list_domains` с полным `DomainFilter`; `get_domain(fqdn?, include=[…])`; `create_domain` при
+  дубле → `created:false`; `bulk_archive/bulk_assign_project/bulk_add_tags(dry_run)`,
+  `list_registrar_accounts`, `sync_registrar`, `list_unassigned/assign_unassigned`, `notify_alert`,
+  `list_tags`, `list_users`; `ToolAnnotations` на всех; ошибки `{code, message}`; snapshot-тест
+  `build_mcp().list_tools()`. Приёмка: «что горит у Antares?» — один вызов; повторный bulk без
+  дублей.
+- [ ] **T91. Воспроизводимая сборка и supply chain: lock-файл, smoke-импорт entrypoint-ов, compose-smoke в CI, pip-audit, DB-роль least-privilege, CSP, self-hosted ассеты.** _(P1 · M)_
+  pyproject только `>=` — пересборка подтянула mcp 2.0 и mcp-контейнер ушёл в crash-loop при
+  зелёном CI (entrypoint-ы не импортируются тестами, образ не запускается); приложение ходит в
+  Postgres суперпользователем; UI зависит от трёх CDN. Скоуп: `requirements.lock` (+dev), установка
+  из lock; `dependabot.yml` + job `pip-audit`; `tests/unit/test_entrypoints.py`; CI job `smoke`
+  (`compose up --build` → /readyz → healthy, импорт `app.mcp.server`, worker без Traceback);
+  удалить мёртвый `app/workers/main.py`; роль `domainguard_app` DML-only + owner-DSN для migrate;
+  `CSP Report-Only` → enforce; Tailwind CLI → `static/app.css`, htmx и шрифт в static/. Приёмка:
+  CI падает на ImportError entrypoint'а; страницы рендерятся без CDN.
+- [ ] **T92. Честные тесты и локальный стенд: один прогон CI, cov-fail-under, alembic check, mypy, тесты склейки/планировщика/форм/data-миграций, seed_demo, канал `log`, логи воркера.** _(P1 · L)_
+  Локально `make test` зелёный при недоступных БД (235 из 323 тихо skip); три одинаковых test-job на
+  пуш; 0% на `app/workers/checks.py`; `POST /channels` не покрыт; data-миграция T63 не
+  тестировалась; локально нельзя увидеть дашборд/сводку. Скоуп: ci.yml `pull_request +
+  workflow_call`, `concurrency`, `cache: pip`, `--cov-fail-under=75` с ratchet, `alembic check` +
+  `downgrade base && upgrade head`, `mypy app/` (warn → блокирующий), pre-commit, pytest-timeout/
+  socket; `docker-compose.override.yml`, Makefile `dev-db/test-unit/test-int`; conftest: fail
+  вместо skip, схема через alembic; акторные тесты через StubBroker (run_check, fan-out,
+  send_digest), `enqueue_due_*`, POST /channels всех типов, формы регистраторов/платежей/HC,
+  oauth refresh/revoke; шаблон теста data-миграции; `scripts/seed_demo.py` + тип канала `log`
+  (notification_log + stdout) для локального QA; `app/log.py` для воркера (ts/pid/extra, uvicorn
+  access в JSON); README «Локальная разработка». Приёмка: `make test` без БД падает с понятным
+  текстом; один test-job; покрытие ≥75%; `make seed-demo` показывает сводку в канале `log`.
+- [ ] **T93. Интеграции наружу: REST v1 поверх tools.py, вебхуки с resolved и подписью с timestamp, OpenAPI с securityScheme, гайд подключения MCP/API.** _(P2 · L)_
+  REST — 3 read-only эндпоинта без `response_model`/securityScheme, `/docs` открыт; вебхуки — один
+  POST без ретраев/лога/replay-защиты, только «created»; MCP.md не знает про OAuth. Скоуп: роутер
+  `/api/v1` из `tools.py` (маппинг ошибок → 403/404/409/422), `response_model`, `HTTPBearer`,
+  `/docs` за логином; `webhooks.deliver`: 2xx-проверка, ретраи актора, `NotificationLog` с
+  `endpoint_id`, `X-DomainGuard-Timestamp/Event-Id`, `HMAC(ts + body)`, события `resolved/acked`,
+  `net_guard` на URL, кнопка «Тест»; `docs/MCP.md` (claude.ai custom connector, Claude Code/Desktop/
+  Cursor, dg_ + curl, роли, troubleshooting), `docs/API.md`, `docs/WEBHOOKS.md`. Приёмка: тесты
+  REST-паритета с MCP; respx-тесты вебхуков; n8n получает платежи и прогноз без разработчика.
+- [ ] **T94. Правила алертов: глобальные дефолты + переопределение на уровне компании, алерт на падение репутации VT.** _(P2 · M)_
+  Пороги — константы, `AlertRule` — мёртвая таблица; финансам нужен горизонт 60 дней, ops 7/1, у
+  Antares SSL-алерты на парковке — шум; SPEC FR-CK-3 требует алерт на падение reputation. Скоуп:
+  `/rules` (admin): глобальные дефолты + строка на компанию; `rules.effective(company_id)` с кэшем
+  и инвалидацией; `evaluate_*` читают эффективное правило, проставляют `rule_id`; новые dedupe-
+  ключи только при ужесточении; вид `vt_reputation`; SPEC FR-AL-3, §11. Приёмка: для GT1
+  выставлен горизонт 60 дней без деплоя; для Antares SSL по проекту «парковка» выключен.
+- [ ] **T95. Регистраторы: коннекторы по фактическому списку компаний, цены через интерфейс коннектора, отчёт синка о пропущенных.** _(P2 · L)_
+  `build_connector` знает два типа; прод: 56 доменов без регистратора (Marcaria/Hostinger/
+  Regway/…) — ops не видят «где продлевать», auto_renew и цены нет; `sync_account` молча
+  `continue` на InvalidDomainError. Скоуп: уточнить список регистраторов; 2–3 коннектора
+  (Cloudflare / Porkbun / NameSilo / Hostinger — проверить API) с respx-тестами timeout/429/5xx/401;
+  цены и синк через один интерфейс; `SyncReport.skipped` в UI; выбор регистратора из справочника
+  при ручном создании/импорте. Приёмка: доля «без регистратора» на проде < 5%.
+- [ ] **T96. Данные на масштабе: retention ssl/vt/history/логов, композитные индексы, предсоздание партиций, Public Suffix List.** _(P2 · L)_
+  `run_retention` чистит только `check_result`/`health_check_results`; прод: `ssl_certificates`
+  **40 746 строк (49% с ошибкой), ~2 строки/домен/день, без retention**; `vt_results`,
+  `domain_field_history`, `notification_log`, `audit_log` растут бесконечно; `ssl_status_map` без
+  индекса `(domain_id, checked_at DESC)`; `ensure_partition` делает DDL на каждой записи;
+  `tld` = последний лейбл — поддомены принимаются как домены. Скоуп: retention ssl/vt/
+  notification_log 12 мес, field_history 12 мес или N на домен, audit 24 мес; индексы; предсоздание
+  партиции в retention-задаче, DDL из `write_result` убран; пагинация таймлайна карточки;
+  `registrable_domain` + `kind (apex|subdomain)` через PSL (backfill), для subdomain не планировать
+  rdap/vt. Приёмка: EXPLAIN на /domains и карточке при 10k доменов и годовой истории < 1 с; ноль
+  DDL в горячем пути.
 
 ## Backlog / находки
 

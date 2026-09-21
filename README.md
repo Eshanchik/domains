@@ -5,7 +5,7 @@
 (VirusTotal), кастомных health-check URL, учёт стоимости продлений и адресные алерты
 в Telegram.
 
-Полная спецификация — [`docs/SPEC.md`](docs/SPEC.md). План работ — [`docs/PLAN.md`](docs/PLAN.md).
+Полная спецификация — [`docs/SPEC.md`](docs/SPEC.md). План работ — [`docs/PLAN.md`](docs/PLAN.md). Ресерч и дорожная карта (сентябрь 2026) — [`docs/RESEARCH-2026-09.md`](docs/RESEARCH-2026-09.md).
 Правила разработки — [`CLAUDE.md`](CLAUDE.md).
 
 ## Стек

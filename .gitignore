@@ -24,3 +24,6 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+
+# Foglamp codebase scan (edit token is a secret)
+.foglamp/
