@@ -30,7 +30,9 @@ from app.models.alert import AlertEvent
 from app.models.company import Company, Project
 from app.models.domain import Domain
 from app.models.notification import NotificationChannel
+from app.models.person import Person
 from app.models.registrar import RegistrarAccount
+from app.services.people import PersonRef, mention
 
 log = logging.getLogger("services.digest")
 
@@ -112,6 +114,7 @@ class DigestRow:
     detail: str = ""  # ready tail for non-expiry kinds (e.g. "3 детекта")
     is_stale: bool = False
     sort: int = 0
+    assignee: PersonRef | None = None  # owner (T97) — shown by name, pinged in the header
 
 
 @dataclass
@@ -143,10 +146,28 @@ class Digest:
     total: int
     tiers: list[DigestTier] = field(default_factory=list)
     event_ids: list[int] = field(default_factory=list)  # alert events covered (to mark sent)
+    # Owners with how many rows each has in this digest, most first (T97).
+    owners: list[tuple[PersonRef, int]] = field(default_factory=list)
 
     @property
     def action_count(self) -> int:
         return next((t.count for t in self.tiers if t.key == "crit"), 0)
+
+
+def owners_line(d: Digest, channel_type: str, *, limit: int = 1800) -> str:
+    """«👤 Ответственные: <mention> ×N · …» in ``channel_type``'s dialect ('' if none)."""
+    if not d.owners:
+        return ""
+    parts: list[str] = []
+    used = 0
+    for ref, n in d.owners:
+        piece = f"{mention(ref, channel_type)} ×{n}"
+        if used + len(piece) + 3 > limit:
+            parts.append("…")
+            break
+        parts.append(piece)
+        used += len(piece) + 3
+    return "👤 Ответственные: " + " · ".join(parts)
 
 
 async def _scope_name(session: AsyncSession, channel: NotificationChannel) -> str:
@@ -196,10 +217,12 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
             Domain.auto_renew,
             RegistrarAccount.label,
             Project.name,
+            Person,
         )
         .join(Domain, Domain.id == AlertEvent.domain_id)
         .join(Project, Project.id == Domain.project_id)
         .outerjoin(RegistrarAccount, RegistrarAccount.id == Domain.registrar_account_id)
+        .outerjoin(Person, Person.id == AlertEvent.assignee_person_id)
         .where(
             AlertEvent.state == "active",
             AlertEvent.notified_at.is_(None),  # deliver-once: only alerts not yet sent
@@ -219,10 +242,14 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
     tier_groups: dict[str, dict[int, DigestGroup]] = {k: {} for k in _TIER_ORDER}
     total = 0
     event_ids: list[int] = []
+    owner_counts: dict[int, list] = {}
 
-    for event, did, fqdn, exp, auto_renew, account, project in rows:
+    for event, did, fqdn, exp, auto_renew, account, project, owner in rows:
         total += 1
         event_ids.append(event.id)
+        owner_ref = PersonRef.of(owner) if owner is not None and owner.is_active else None
+        if owner_ref is not None:
+            owner_counts.setdefault(owner_ref.id, [owner_ref, 0])[1] += 1
         p = event.payload_json or {}
         kind = event.kind
         days: int | None = None
@@ -261,6 +288,7 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
             detail=detail,
             is_stale=is_stale,
             sort=days if isinstance(days, int) else 10_000,
+            assignee=owner_ref,
         )
         group = tier_groups[tier_key].setdefault(order, DigestGroup(order, emoji, title))
         group.rows.append(row)
@@ -284,6 +312,9 @@ async def compose_digest(session: AsyncSession, channel: NotificationChannel) ->
         total=total,
         tiers=tiers,
         event_ids=event_ids,
+        owners=sorted(
+            ((ref, n) for ref, n in owner_counts.values()), key=lambda x: (-x[1], x[0].name)
+        ),
     )
 
 
@@ -314,6 +345,8 @@ def _row_tail(row: DigestRow) -> list[str]:
         parts.append(row.detail)
         if row.account:
             parts.append(row.account)
+    if row.assignee is not None:
+        parts.append(f"👤 {row.assignee.name}")
     if row.is_stale:
         parts.append("⚠ вероятно продлён")
     return [p for p in parts if p]
@@ -325,6 +358,9 @@ def render_plain(d: Digest) -> str:
         f"📋 DomainGuard · {d.scope_name} — ежедневная сводка",
         f"Активных алертов: {d.total} · требуют действий: {d.action_count}",
     ]
+    owners = owners_line(d, "plain")
+    if owners:
+        lines.append(owners)
     for t in d.tiers:
         lines.append(f"\n{t.emoji} {t.title} — {t.count}")
         for g in t.groups:
@@ -353,6 +389,9 @@ def render_telegram_html(d: Digest) -> str:
     if d.dashboard_url:
         head.append(f'<a href="{attr(d.dashboard_url)}">Открыть дашборд →</a>')
     head.append(f"<i>Сводка за {esc(d.generated_label)}</i>")
+    owners = owners_line(d, "telegram")
+    if owners:
+        head.append(esc(owners))  # @username stays a live mention in HTML mode
     lines = head
     for t in d.tiers:
         lines.append(f"\n<b>{t.emoji} {t.title} — {t.count}</b>")
@@ -461,6 +500,10 @@ def render_discord(d: Digest) -> list[dict]:
         used += size
     if cur:
         messages.append({"username": "DomainGuard", "embeds": cur})
+    # Pings only work in `content` (never inside embeds) — put the owners there once.
+    owners = owners_line(d, "discord")
+    if owners and messages:
+        messages[0]["content"] = owners
     return messages
 
 

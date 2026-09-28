@@ -6,6 +6,8 @@ success status. 429/5xx raise a transient error so the caller retries.
 
 from __future__ import annotations
 
+import re
+
 import httpx
 
 from app.channels.base import ChannelError, ChannelTransientError, NotificationChannel
@@ -50,17 +52,33 @@ class SlackChannel(_WebhookChannel):
         return {"text": text}
 
 
+_DISCORD_USER = re.compile(r"<@!?(\d{15,22})>")
+_DISCORD_ROLE = re.compile(r"<@&(\d{15,22})>")
+
+
+def discord_allowed_mentions(content: str) -> dict:
+    """Ping exactly the users/roles written as ``<@id>`` / ``<@&id>`` in ``content``.
+
+    ``parse: []`` disables implicit parsing, so ``@everyone`` / ``@here`` typed into a
+    comment (or a domain name that looks like one) can never mass-ping the channel.
+    """
+    users = list(dict.fromkeys(_DISCORD_USER.findall(content or "")))[:100]
+    roles = list(dict.fromkeys(_DISCORD_ROLE.findall(content or "")))[:100]
+    return {"parse": [], "users": users, "roles": roles}
+
+
 class DiscordChannel(_WebhookChannel):
     MAX_LEN = 2000  # Discord webhook "content" hard limit
 
     def _payload(self, text: str) -> dict:
-        return {"content": text}
+        return {"content": text, "allowed_mentions": discord_allowed_mentions(text)}
 
     async def send_digest(self, digest: object) -> None:
         """Render the digest as native Discord embeds (colored severity cards)."""
         from app.services.digest import render_discord
 
         for body in render_discord(digest):
+            body["allowed_mentions"] = discord_allowed_mentions(body.get("content", ""))
             await self._post(body)
 
 

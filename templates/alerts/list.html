@@ -25,9 +25,15 @@
   </select>
   <select name="kind" class="select w-auto" onchange="this.form.requestSubmit()">
     <option value="">Любой тип</option>
-    {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if f.kind == k else '' }}>{{ k }}</option>{% endfor %}
+    {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if f.kind == k else '' }}>{{ k | kind_ru }}</option>{% endfor %}
   </select>
-  {% if f.company_id or f.project_id or f.severity or f.kind %}
+  <select name="owner" class="select w-auto" onchange="this.form.requestSubmit()">
+    <option value="">Любой ответственный</option>
+    {% if me %}<option value="me" {{ 'selected' if f.owner == 'me' else '' }}>Мои</option>{% endif %}
+    <option value="none" {{ 'selected' if f.owner == 'none' else '' }}>Без ответственного</option>
+    {% for p in people %}<option value="{{ p.id }}" {{ 'selected' if f.owner == p.id|string else '' }}>{{ p.name }} (@{{ p.handle }})</option>{% endfor %}
+  </select>
+  {% if f.company_id or f.project_id or f.severity or f.kind or f.owner %}
   <a href="/alerts" class="btn btn-secondary btn-sm">Сбросить</a>
   {% endif %}
 </form>
@@ -40,6 +46,7 @@
     <span style="width:88px;flex-shrink:0">KIND</span>
     <span style="flex:1.4;min-width:0">DOMAIN</span>
     <span style="flex:1;min-width:0">PROJECT</span>
+    <span style="width:140px;flex-shrink:0">КТО</span>
     <span style="width:132px;flex-shrink:0">FIRED</span>
     <span style="width:150px;text-align:right;flex-shrink:0">STATE / AGE</span>
     <span style="width:10px"></span>
@@ -51,13 +58,16 @@
      class="dg-logrow"
      style="display:flex;align-items:center;gap:12px;padding:6px 16px;cursor:pointer;text-decoration:none;{{ 'background:var(--panel-2)' if loop.index0 % 2 else 'background:transparent' }}">
     <span style="width:78px;flex-shrink:0;color:{{ sev_color.get(event.severity, 'var(--dim)') }}">{{ sev_glyph.get(event.severity, event.severity) }}</span>
-    <span style="width:88px;flex-shrink:0;color:var(--dim)">{{ event.kind }}</span>
+    <span style="width:88px;flex-shrink:0;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ event.kind | kind_ru }}">{{ event.kind }}</span>
     <span style="flex:1.4;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--acc)">{{ row.fqdn }}</span>
     <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ row.company }} / {{ row.project }}">
       <span style="color:var(--cyan)">{{ row.project }}</span><span style="color:var(--faint)"> · {{ row.company }}</span>
     </span>
+    <span style="width:140px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ row.owner.name if row.owner else 'не назначен' }}">
+      {% if row.owner %}<span style="color:var(--cyan)">@{{ row.owner.handle }}</span>{% else %}<span style="color:var(--faint)">—</span>{% endif %}
+    </span>
     <span style="width:132px;flex-shrink:0;color:var(--dim)">{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</span>
-    <span style="width:150px;text-align:right;flex-shrink:0"><span style="color:var(--amber)">◆ ACTIVE</span> <span style="color:var(--dim)">· {{ row.age }}</span></span>
+    <span style="width:150px;text-align:right;flex-shrink:0">{% if event.acked_at %}<span style="color:var(--cyan)">◆ В РАБОТЕ</span>{% else %}<span style="color:var(--amber)">◆ ACTIVE</span>{% endif %} <span style="color:var(--dim)">· {{ row.age }}</span></span>
     <span style="margin-left:8px;color:var(--dim)">›</span>
   </a>
   {% else %}

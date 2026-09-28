@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.alert import AlertEvent
 from app.models.company import Company, Project
 from app.models.domain import Domain
+from app.models.notification import NotificationChannel
 from app.models.ssl_certificate import SslCertificate
 from app.models.vt_result import VtResult
 from app.services import notifications as notif
@@ -88,14 +89,37 @@ async def _resolve(
 
 
 async def resolve_event(
-    session: AsyncSession, event_id: int, *, now: datetime | None = None
+    session: AsyncSession,
+    event_id: int,
+    *,
+    now: datetime | None = None,
+    actor_id: int | None = None,
+    note: str | None = None,
 ) -> bool:
-    """Manually resolve one active alert event by id. Returns True if it was active."""
+    """Manually resolve one active alert event by id. Returns True if it was active.
+
+    Records who closed it and why (T97): ``resolved_by_id``, ``resolution_note``, a
+    timeline entry and an audit record."""
+    from app.core.audit import record_audit
+    from app.services.alert_workflow import record_activity
+
     ev = await session.get(AlertEvent, event_id)
     if ev is None or ev.state != "active":
         return False
+    note = (note or "").strip()[:500] or None
     ev.state = "resolved"
     ev.resolved_at = now or datetime.now(UTC)
+    ev.resolved_by_id = actor_id
+    ev.resolution_note = note
+    record_activity(session, ev.id, "resolved", actor_id=actor_id, body=note)
+    await record_audit(
+        session,
+        actor_id=actor_id,
+        action="resolve",
+        entity_type="alert",
+        entity_id=ev.id,
+        diff={"note": note} if note else None,
+    )
     await session.commit()
     return True
 
@@ -279,11 +303,31 @@ def build_message(
     project: str | None = None,
     company: str | None = None,
     account: str | None = None,
+    mention: str | None = None,
+    url: str | None = None,
 ) -> str:
     """A clear, multi-line alert message that renders in Telegram/Discord/webhook.
 
     Plain text + emoji (no markdown dialect) so it looks the same in every channel.
+    ``mention`` (already in the channel's dialect, e.g. ``<@123>``) pings the owner;
+    ``url`` links to the alert card (T97).
     """
+    tail = ""
+    if mention:
+        tail += f"\n👤 {mention}"
+    if url:
+        tail += f"\n🔗 {url}"
+    return _build_body(event, domain, project=project, company=company, account=account) + tail
+
+
+def _build_body(
+    event: AlertEvent,
+    domain: Domain,
+    *,
+    project: str | None,
+    company: str | None,
+    account: str | None,
+) -> str:
     p = event.payload_json or {}
     days = p.get("days")
     threshold = p.get("threshold")
@@ -327,16 +371,32 @@ def build_message(
 
 
 async def mark_events_notified(
-    session: AsyncSession, event_ids: list[int], *, now: datetime | None = None
+    session: AsyncSession,
+    event_ids: list[int],
+    *,
+    now: datetime | None = None,
+    channel: NotificationChannel | None = None,
 ) -> None:
-    """Mark alert events as delivered so the digest never re-sends them (deliver-once)."""
+    """Mark alert events as delivered so the digest never re-sends them (deliver-once).
+
+    With ``channel`` each event also gets a timeline entry «в сводке канала …» (T97)."""
     if not event_ids:
         return
+    ts = now or datetime.now(UTC)
     await session.execute(
-        update(AlertEvent)
-        .where(AlertEvent.id.in_(event_ids))
-        .values(notified_at=now or datetime.now(UTC))
+        update(AlertEvent).where(AlertEvent.id.in_(event_ids)).values(notified_at=ts)
     )
+    if channel is not None:
+        from app.services.alert_workflow import record_activity
+
+        for event_id in event_ids:
+            record_activity(
+                session,
+                event_id,
+                "digest",
+                data={"channel": channel.name, "channel_id": channel.id},
+                at=ts,
+            )
     await session.commit()
 
 
@@ -363,16 +423,43 @@ async def dispatch_instant(
 
         send = lambda cid, text, eid: send_notification.send(cid, text, eid)  # noqa: E731
 
+    from app.models.person import Person
+    from app.services import people
+    from app.services.alert_workflow import alert_url, record_activity
+
     project, company = await domain_location(session, domain)
     account = await account_label(session, domain)
     ts = now or datetime.now(UTC)
     count = 0
     for event in high:
-        text = build_message(event, domain, project=project, company=company, account=account)
+        owner = (
+            await session.get(Person, event.assignee_person_id)
+            if event.assignee_person_id is not None
+            else None
+        )
         for channel in channels:
+            text = build_message(
+                event,
+                domain,
+                project=project,
+                company=company,
+                account=account,
+                mention=people.mention(owner, channel.type) or None,
+                url=alert_url(event.id),
+            )
             send(channel.id, text, event.id)
             count += 1
         event.notified_at = ts  # delivered instantly → keep it out of the digest
+        record_activity(
+            session,
+            event.id,
+            "notified",
+            data={
+                "channels": [c.name for c in channels],
+                "mentions": [owner.id] if owner is not None else [],
+            },
+            at=ts,
+        )
     await session.commit()
     return count
 
@@ -452,9 +539,18 @@ async def evaluate_after_check(
         events = await evaluate_dns(session, domain, now=now)
     else:
         return []
+    await _auto_assign(session, domain, events)
     await session.commit()
     await dispatch_instant(session, redis, domain, events, send=send, now=now)
     return events
+
+
+async def _auto_assign(session: AsyncSession, domain: Domain, events: list[AlertEvent]) -> None:
+    if not events:
+        return
+    from app.services.alert_workflow import auto_assign
+
+    await auto_assign(session, domain, events)
 
 
 async def evaluate_after_healthcheck(
@@ -468,8 +564,10 @@ async def evaluate_after_healthcheck(
     send: Callable[[int, str, int], None] | None = None,
 ) -> list[AlertEvent]:
     events = await evaluate_health(session, domain_id, healthcheck_id, transition, now=now)
-    await session.commit()
     domain = await session.get(Domain, domain_id)
+    if domain is not None:
+        await _auto_assign(session, domain, events)
+    await session.commit()
     if domain is not None:
         await dispatch_instant(session, redis, domain, events, send=send)
     return events

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% import "_components.html" as ui %}
+{% block title %}Изменить: {{ person.name }} — DomainGuard{% endblock %}
+{% block content %}
+<div class="max-w-lg">
+{% call ui.panel("Изменить: " ~ person.name) %}
+{% if error %}<div style="padding:16px 18px 0">{{ ui.flash(error) }}</div>{% endif %}
+<form method="post" action="/people/{{ person.id }}" class="space-y-4" style="padding:16px 18px">
+  <div>
+    <label class="label" for="kind">Тип</label>
+    <select id="kind" name="kind" class="select">
+      <option value="person" {{ "selected" if person.kind == "person" else "" }}>Человек</option>
+      <option value="group" {{ "selected" if person.kind == "group" else "" }}>Группа (роль Discord)</option>
+    </select>
+  </div>
+  <div>
+    <label class="label" for="name">Имя</label>
+    <input id="name" name="name" required value="{{ person.name }}" class="input" />
+  </div>
+  <div>
+    <label class="label" for="handle">Ник для упоминаний (@…)</label>
+    <input id="handle" name="handle" required value="{{ person.handle }}" class="input input-mono" />
+  </div>
+  <div>
+    <label class="label" for="discord_id">Discord ID (пользователя или роли)</label>
+    <input id="discord_id" name="discord_id" value="{{ person.discord_id or '' }}" class="input input-mono" />
+  </div>
+  <div>
+    <label class="label" for="telegram_username">Telegram username</label>
+    <input id="telegram_username" name="telegram_username" value="{{ person.telegram_username or '' }}" class="input input-mono" />
+  </div>
+  <div>
+    <label class="label" for="user_id">Аккаунт DomainGuard</label>
+    <select id="user_id" name="user_id" class="select">
+      <option value="">— нет —</option>
+      {% for u in users %}<option value="{{ u.id }}" {{ "selected" if person.user_id == u.id else "" }}>{{ u.login }}</option>{% endfor %}
+    </select>
+    <p class="mt-1 text-xs muted">Со связанным аккаунтом кнопка «Взял в работу» делает этого человека ответственным.</p>
+  </div>
+  <div>
+    <label class="label" for="note">Заметка</label>
+    <input id="note" name="note" value="{{ person.note or '' }}" class="input" />
+  </div>
+  <label class="flex items-center gap-2 text-sm">
+    <input type="checkbox" name="is_active" value="1" class="checkbox" {{ "checked" if person.is_active else "" }} />
+    Активен (отключённого не назначают и не упоминают)
+  </label>
+  <div class="flex items-center gap-3 pt-1">
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/people" class="btn btn-ghost">Отмена</a>
+  </div>
+</form>
+{% endcall %}
+</div>
+{% endblock %}

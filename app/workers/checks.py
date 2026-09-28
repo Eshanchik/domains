@@ -159,7 +159,7 @@ async def _send_digest(channel_id: int) -> None:
                 if ok:
                     from app.services.alerts import mark_events_notified
 
-                    await mark_events_notified(session, digest.event_ids)
+                    await mark_events_notified(session, digest.event_ids, channel=channel)
     finally:
         await redis.aclose()
 
