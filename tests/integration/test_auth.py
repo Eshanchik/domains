@@ -188,6 +188,7 @@ def test_login_by_email_or_login_in_any_case(client, make_user) -> None:
         resp = _post_login(client, ident)
         assert resp.status_code == 303, ident
         assert "dg_session" in resp.cookies
+    client.cookies.clear()  # logged-in users are redirected away from /login
     assert "логин или почта" in client.get("/login").text  # the form says so
 
 
