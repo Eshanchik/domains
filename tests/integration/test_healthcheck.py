@@ -224,3 +224,29 @@ def test_create_rejects_non_http_url(make_company, make_project, make_domain):
                 return "rejected"
 
     assert _run(run()) == "rejected"
+
+
+@respx.mock
+def test_transport_error_reason_is_never_blank(make_company, make_project, make_domain):
+    # httpx.ConnectError("") stringifies to "" — the stored reason must still say what
+    # happened (T99: the tracking board shows it to people).
+    from sqlalchemy import select
+
+    from app.models.healthcheck import HealthCheckResult
+
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="example.com")
+    hc = _make_hc(dom)
+    respx.get("https://example.com/click?pid=1&offer_id=625").mock(
+        side_effect=httpx.ConnectError("")
+    )
+    _check_once(hc)
+
+    async def reason():
+        async with SessionLocal() as s:
+            return await s.scalar(
+                select(HealthCheckResult.error).where(HealthCheckResult.healthcheck_id == hc)
+            )
+
+    assert _run(reason()) == "request failed: ConnectError"

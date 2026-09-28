@@ -107,3 +107,27 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 Откат миграций (если требуется) — `alembic downgrade <revision>` в контейнере
 (осторожно: удаляет данные соответствующих таблиц).
+
+## 9. Вход через Google и страница статуса трекинга (T37, T99)
+
+Нужен для двух вещей: кнопки «Войти через Google» у существующих пользователей и страницы
+`/status/tracking`, на которую сотрудник с рабочей почтой (например `@adera.agency`) входит своим
+Google-аккаунтом и видит трекинг-домены компании. Отдельных учёток в DomainGuard не нужно.
+
+1. **Google Cloud Console** (под админом Workspace adera.agency) → APIs & Services →
+   **OAuth consent screen**: тип **Internal**. Так войти смогут только аккаунты этого Workspace;
+   DomainGuard дополнительно сверяет claim `hd`.
+2. **Credentials → Create credentials → OAuth client ID → Web application**.
+   Authorized redirect URI: `https://domains.zimbabwe-inc.com/auth/google/callback`
+   (один адрес для обоих входов).
+3. В **ops-adera** положите Client ID и Client Secret в vault:
+   `vault_domains_google_client_id`, `vault_domains_google_client_secret`
+   (`GOOGLE_REDIRECT_URI` роль подставит сама), затем выполните деплой: Semaphore «Deploy domains».
+4. В DomainGuard: **Трекинг → «Страница статуса для сотрудников»** → домен почты `adera.agency`,
+   «показывать трекеры компании Adera» → «Открыть доступ».
+5. Раздайте ссылку `https://domains.zimbabwe-inc.com/status/tracking`.
+
+Безопасность: сессия страницы статуса живёт 12 часов, cookie действует только на `/status`,
+остальной DomainGuard она не открывает. Если удалить правило, доступ закроется сразу, в том числе
+в уже открытых сессиях; при повторном добавлении правила все сотрудники входят заново. Каждый вход пишется в аудит (`status_login`). Личный Google-аккаунт,
+заведённый на рабочий адрес, не пройдёт: у него нет `hd`.

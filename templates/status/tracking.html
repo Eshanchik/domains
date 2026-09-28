@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Статус трекинг-доменов{% endblock %}
+{% block content %}
+<div style="background:rgba(16,21,31,.92);box-shadow:0 0 44px rgba(0,0,0,.6);padding:14px 18px">
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <div class="text-xs" style="color:var(--cyan)">╭─ DOMAINGUARD // статус</div>
+      <h1 style="margin:2px 0 0;font-size:18px;color:var(--tx)">Трекинг-домены</h1>
+      <div class="text-xs" style="color:var(--dim)">
+        Работают {{ board.totals.up }} из {{ board.totals.total }}{% if board.totals.down %} · <span style="color:var(--mag)">лежат {{ board.totals.down }}</span>{% endif %}
+      </div>
+    </div>
+    {% if via_status %}
+    <form method="post" action="/status/logout" class="flex items-center gap-3 text-xs" style="color:var(--dim)">
+      <span>{{ who }}</span>
+      <button type="submit" class="btn btn-ghost btn-sm">Выйти</button>
+    </form>
+    {% else %}
+    <div class="flex items-center gap-3 text-xs" style="color:var(--dim)">
+      <span>{{ who }} · вы вошли в DomainGuard</span>
+      <a href="/tracking" class="btn btn-ghost btn-sm">← в DomainGuard</a>
+    </div>
+    {% endif %}
+  </div>
+  <div hx-get="/status/tracking?partial=1" hx-trigger="every 60s" hx-swap="innerHTML">
+    {% include "tracking/_board.html" %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,99 @@
+{# Tracking board — shared by /tracking (internal) and /status/tracking (public).
+   Inputs: board, public (bool), can_manage (bool). Rendered standalone for HTMX refresh. #}
+{%- set st_color = {"up": "var(--ok)", "down": "var(--mag)", "degraded": "var(--amber)", "stale": "var(--amber)", "unknown": "var(--dim)", "nocheck": "var(--faint)"} -%}
+{%- set st_glyph = {"up": "✔", "down": "✖", "degraded": "◆", "stale": "⌛", "unknown": "…", "nocheck": "·"} -%}
+{%- macro uptime(v) -%}
+  {%- if v is none -%}<span style="color:var(--faint)">—</span>
+  {%- else -%}<span style="color:{{ 'var(--ok)' if v >= 99 else ('var(--amber)' if v >= 95 else 'var(--mag)') }}">{{ '%g' % v }}%</span>
+  {%- endif -%}
+{%- endmacro -%}
+<div class="tracking-board">
+<div class="statgrid mb-4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--bd)">
+  {% for key, label, color in [
+      ("total", "Трекеров", "var(--tx)"),
+      ("up", "✔ Работают", "var(--ok)"),
+      ("down", "✖ Лежат", "var(--mag)"),
+      ("degraded", "◆ Сбоят", "var(--amber)"),
+      ("stale", "⌛ Нет свежих данных", "var(--amber)"),
+      ("nocheck", "· Без проверки", "var(--dim)"),
+      ("vt", "🚨 VirusTotal", "var(--mag)"),
+      ("expiring", "⏳ Истекают ≤30 дн", "var(--amber)"),
+  ] %}
+  <div class="statcell" style="background:var(--panel);padding:10px 14px">
+    <div class="text-xs" style="color:var(--dim)">{{ label }}</div>
+    <div style="font-size:22px;font-weight:700;color:{{ color if board.totals[key] else 'var(--faint)' }}">{{ board.totals[key] }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="dgframe">
+  <div class="dgframe-h"><span>╭─</span><span class="dgframe-t">ТРЕКЕРЫ ({{ board.rows | length }})</span><span class="dgframe-line"></span><span>╮</span></div>
+  <div style="overflow-x:auto">
+  <table class="dg-table" style="min-width:980px">
+    <thead>
+      <tr>
+        <th>Домен</th><th>Статус</th><th title="доля успешных проверок">Аптайм 24ч · 7д</th>
+        <th title="последние проверки, слева старые">История</th><th>Последний ответ</th>
+        <th>SSL</th><th>VT</th><th>DNS</th><th>Истекает</th>
+        {% if can_manage and not public %}<th></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in board.rows %}
+      <tr {% if r.status == "down" %}style="background:rgba(255,106,193,.06)"{% endif %}>
+        <td style="white-space:nowrap">
+          {% if public %}<span class="font-mono" style="color:var(--acc)">{{ r.fqdn }}</span>
+          {% else %}<a href="/domains/{{ r.domain_id }}" class="link font-mono" style="color:var(--acc)">{{ r.fqdn }}</a>{% endif %}
+          <div class="text-xs" style="color:var(--faint)">{{ r.project }} · {{ r.company }}{% if r.checks > 1 %} · проверок: {{ r.checks }}{% endif %}</div>
+        </td>
+        <td style="white-space:nowrap">
+          <span style="color:{{ st_color[r.status] }};font-weight:700">{{ st_glyph[r.status] }} {{ r.status_label }}</span>
+          {% if r.since_label %}<div class="text-xs" style="color:var(--dim)">{{ r.since_label }}</div>{% endif %}
+        </td>
+        <td style="white-space:nowrap">{{ uptime(r.uptime_24h) }} <span style="color:var(--faint)">·</span> {{ uptime(r.uptime_7d) }}</td>
+        <td style="white-space:nowrap;letter-spacing:-1px;font-size:13px">
+          {% for p in r.spark %}<span title="{{ p.at_label }} · {{ p.detail }}" style="color:{{ 'var(--ok)' if p.ok else 'var(--mag)' }}">▮</span>{% else %}<span style="color:var(--faint);letter-spacing:0">нет данных</span>{% endfor %}
+        </td>
+        <td style="max-width:260px">
+          {% if r.last_reason %}<span style="color:var(--mag)">{{ r.last_reason }}</span>
+          {% elif r.last_code %}<span style="color:var(--ok)">HTTP {{ r.last_code }}</span>{% if r.last_latency_ms is not none %} <span style="color:var(--dim)">· {{ r.last_latency_ms }} мс</span>{% endif %}
+          {% else %}<span style="color:var(--faint)">—</span>{% endif %}
+          {% if r.last_checked_label %}<div class="text-xs" style="color:var(--faint)">{{ r.last_checked_label }}</div>{% endif %}
+        </td>
+        <td>{% if r.ssl %}<span class="badge badge-{{ r.ssl[1] }}">{{ r.ssl[0] }}</span>{% else %}<span style="color:var(--faint)">—</span>{% endif %}</td>
+        <td>{% if r.vt_malicious %}<span class="badge badge-red" title="детектов на VirusTotal">🚨 {{ r.vt_malicious }}</span>
+            {% elif r.vt_malicious is not none %}<span style="color:var(--ok)">✔</span>
+            {% else %}<span style="color:var(--faint)">—</span>{% endif %}</td>
+        <td>{% if r.dns_status == "ok" %}<span style="color:var(--ok)">✔</span>
+            {% elif r.dns_status %}<span style="color:var(--amber)" title="DNS не вернул записей">⚠ нет записей</span>
+            {% else %}<span style="color:var(--faint)">—</span>{% endif %}</td>
+        <td style="white-space:nowrap">
+          {% if r.expiry_days is none %}<span style="color:var(--faint)">—</span>
+          {% elif r.expiry_days < 0 %}<span style="color:var(--mag)">истёк</span>
+          {% else %}<span style="color:{{ 'var(--mag)' if r.expiry_days <= 7 else ('var(--amber)' if r.expiry_days <= 30 else 'var(--dim)') }}">{{ r.expiry_days }} дн.</span>{% endif %}
+        </td>
+        {% if can_manage and not public %}
+        <td style="white-space:nowrap">
+          <form method="post" action="/tracking/{{ r.domain_id }}/recheck" class="inline">
+            <button class="link" title="проверить сейчас">⟳</button>
+          </form>
+          <form method="post" action="/tracking/{{ r.domain_id }}/remove" class="inline"
+                data-confirm="Убрать {{ r.fqdn }} из трекинга? Health-check домена останется — его можно удалить в карточке домена."
+                onsubmit="return confirm(this.dataset.confirm);">
+            <button class="btn-link-danger" title="убрать из трекинга">✕</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 10 if can_manage and not public else 9 }}" class="px-4 py-6 text-center text-sm" style="color:var(--faint)">
+        Трекинг-доменов нет{% if not public %} — добавьте домены ниже или повесьте тег «tracking»{% endif %}.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="dgframe-f"><span>╰</span><span class="dgframe-line"></span><span>╯</span></div>
+</div>
+<p class="mt-2 text-xs" style="color:var(--faint)">Обновлено {{ board.generated_label }} (Kyiv) · страница обновляется сама каждую минуту · трекеры проверяются по своему расписанию (обычно раз в 15 минут).</p>
+</div>

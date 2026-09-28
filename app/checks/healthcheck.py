@@ -88,7 +88,10 @@ async def _perform(
     except net_guard.UnsafeUrlError as exc:
         return False, None, None, f"blocked redirect: {exc}"
     except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPError) as exc:
-        return False, None, None, f"request failed: {exc}"
+        # Many transport errors stringify to "" — keep the exception type so the
+        # reason is never blank ("request failed: ConnectError").
+        detail = str(exc).strip() or type(exc).__name__
+        return False, None, None, f"request failed: {detail}"
 
     latency = int((time.monotonic() - start) * 1000)
     ok = status_matches(resp.status_code, hc.expected_statuses)

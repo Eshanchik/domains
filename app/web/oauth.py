@@ -93,6 +93,8 @@ async def google_login(request: Request):
         secure=_is_secure(),
         samesite="lax",
     )
+    # A leftover status-page purpose (abandoned /status login) must not reroute this.
+    response.delete_cookie("dg_oauth_purpose")
     return response
 
 
@@ -105,8 +107,20 @@ async def google_callback(
     session: AsyncSession = Depends(get_session),
     redis: aioredis.Redis = Depends(redis_dep),
 ):
+    # Status-page sign-in (T99) shares this callback; its failures must land on the
+    # status login page, never on the internal DomainGuard one.
+    is_status = request.cookies.get("dg_oauth_purpose") == "status"
+
+    def fail(message: str):
+        if is_status:
+            from app.web.status import status_login_error
+
+            return status_login_error(request, message, code=status.HTTP_401_UNAUTHORIZED)
+        return _login_error(request, message)
+
     if not settings.google_oauth_enabled:
-        return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+        target = "/status/tracking" if is_status else "/login"
+        return RedirectResponse(target, status_code=status.HTTP_303_SEE_OTHER)
 
     cookie_state = request.cookies.get(STATE_COOKIE, "")
     if (
@@ -116,12 +130,19 @@ async def google_callback(
         or not cookie_state
         or not secrets.compare_digest(state, cookie_state)
     ):
-        return _login_error(request, "Не удалось войти через Google. Повторите попытку.")
+        return fail("Не удалось войти через Google. Повторите попытку.")
 
     try:
         identity = await google_oauth.exchange_code(code, _redirect_uri(request))
     except google_oauth.OAuthError:
-        return _login_error(request, "Не удалось войти через Google. Повторите попытку.")
+        return fail("Не удалось войти через Google. Повторите попытку.")
+
+    if is_status:
+        # Its own access rules and session — never a DomainGuard login, whatever
+        # accounts exist for this e-mail.
+        from app.web.status import complete_google_login
+
+        return await complete_google_login(request, session, redis, identity)
 
     if not identity.email_verified:
         return _login_error(request, "Google-аккаунт с неподтверждённым email не допускается.")

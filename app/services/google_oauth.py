@@ -30,6 +30,9 @@ class OAuthError(Exception):
 class GoogleIdentity:
     email: str
     email_verified: bool
+    # Google Workspace hosted domain — present only for accounts managed by that
+    # Workspace (T99 status page requires it to match the e-mail domain).
+    hd: str | None = None
 
 
 def new_state() -> str:
@@ -37,7 +40,7 @@ def new_state() -> str:
     return secrets.token_urlsafe(24)
 
 
-def build_authorize_url(*, state: str, redirect_uri: str) -> str:
+def build_authorize_url(*, state: str, redirect_uri: str, hd: str | None = None) -> str:
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": redirect_uri,
@@ -47,6 +50,8 @@ def build_authorize_url(*, state: str, redirect_uri: str) -> str:
         "access_type": "online",
         "prompt": "select_account",
     }
+    if hd:
+        params["hd"] = hd  # only a UI hint for the account chooser — enforced on callback
     return f"{AUTH_ENDPOINT}?{urlencode(params)}"
 
 
@@ -93,4 +98,5 @@ async def exchange_code(
     email = (info.get("email") or "").strip().lower()
     if not email:
         raise OAuthError("no email in userinfo")
-    return GoogleIdentity(email=email, email_verified=_as_bool(info.get("email_verified")))
+    hd = (info.get("hd") or "").strip().lower() or None
+    return GoogleIdentity(email=email, email_verified=_as_bool(info.get("email_verified")), hd=hd)
