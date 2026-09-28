@@ -248,8 +248,10 @@ async def alert_ack(
     found = await _load_alert_in_scope(session, user, alert_id)
     if found is None:
         return RedirectResponse("/alerts", status_code=status.HTTP_303_SEE_OTHER)
-    await workflow.ack(session, found[0], actor=user)
-    return _back(alert_id, "acked")
+    event = found[0]
+    if await workflow.ack(session, event, actor=user):
+        return _back(alert_id, "acked")
+    return _back(alert_id, "already_acked" if event.state == "active" else "not_active")
 
 
 @router.post("/alerts/{alert_id}/comment")
@@ -295,11 +297,7 @@ async def alert_notify(
         event, domain = found
         project, company = await alerts_svc.domain_location(session, domain)
         account = await alerts_svc.account_label(session, domain)
-        owner = (
-            await session.get(Person, event.assignee_person_id)
-            if event.assignee_person_id is not None
-            else None
-        )
+        owner = await workflow.active_owner(session, event)
         for channel in await notif.resolve_channels(session, domain, purpose="instant"):
             text = alerts_svc.build_message(
                 event,

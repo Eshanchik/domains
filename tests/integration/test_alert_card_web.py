@@ -368,3 +368,36 @@ def test_alert_list_owner_column_and_filter(
     by_id = client.get(f"/alerts?owner={me}").text
     assert "owned.com" in by_id and "orphan.com" not in by_id
     assert client.get("/alerts?owner=").status_code == 200
+
+
+# --- review fixes --------------------------------------------------------------------
+
+
+def test_second_ack_reports_already_taken(
+    client, make_user, make_company, make_project, make_domain
+):
+    acme, dom = _domain(make_company, make_project, make_domain)
+    eid = _alert(dom)
+    _login(client, make_user, "mgr", Role.manager, scopes=[{"company_id": acme}])
+    assert (
+        client.post(f"/alerts/{eid}/ack", follow_redirects=False)
+        .headers["location"]
+        .endswith("msg=acked")
+    )
+    again = client.post(f"/alerts/{eid}/ack", follow_redirects=False)
+    assert again.headers["location"].endswith("msg=already_acked")
+    assert "Алерт уже взят в работу (mgr)" in client.get(again.headers["location"]).text
+
+    client.post(f"/alerts/{eid}/resolve", data={"note": ""})
+    closed = client.post(f"/alerts/{eid}/ack", follow_redirects=False)
+    assert closed.headers["location"].endswith("msg=not_active")
+
+
+def test_person_name_never_lands_in_inline_js(client, make_user):
+    _login(client, make_user, "root", Role.admin)
+    evil = "x'+alert(1)+'"
+    client.post("/people", data={"kind": "person", "name": evil, "handle": "evil"})
+    page = client.get("/people").text
+    assert 'onsubmit="return confirm(this.dataset.confirm);"' in page
+    assert "confirm('Удалить x" not in page
+    assert 'data-confirm="Удалить x&#39;+alert(1)+&#39;?' in page

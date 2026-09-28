@@ -142,3 +142,56 @@ async def test_discord_digest_pings_owners_in_content() -> None:
     assert first["allowed_mentions"]["users"] == ["123456789012345678"]
     assert first["allowed_mentions"]["roles"] == ["987654321098765432"]
     assert first["embeds"]  # the rich cards are still there
+
+
+# --- review fixes -------------------------------------------------------------------
+
+
+def test_mention_before_punctuation_resolves() -> None:
+    out = people.render_mentions("Передаю @vasya. Потом @ops-", BY_HANDLE, "discord")
+    assert out == "Передаю <@123456789012345678>. Потом <@&987654321098765432>-"
+    for bad in ("vasya.", "ops-"):
+        with pytest.raises(PersonError):
+            people.normalize_handle(bad)
+    assert people.normalize_handle("a") == "a"  # single-char handles still valid
+
+
+def _event_and_domain():
+    from types import SimpleNamespace
+
+    event = SimpleNamespace(id=7, severity="high", kind="expiry")
+    domain = SimpleNamespace(fqdn="a.com")
+    return event, domain
+
+
+def test_slack_comment_cannot_ping_the_channel() -> None:
+    from app.services.alert_workflow import comment_message
+
+    event, domain = _event_and_domain()
+    text = comment_message(
+        event,
+        domain,
+        "<!channel> срочно @vasya",
+        actor_name="mgr",
+        by_handle=BY_HANDLE,
+        channel_type="slack",
+    )
+    assert "<!channel>" not in text and "&lt;!channel&gt;" in text
+    assert "Вася (@vasya)" in text
+
+
+def test_raw_discord_ids_in_a_comment_do_not_ping() -> None:
+    from app.services.alert_workflow import comment_message
+
+    event, domain = _event_and_domain()
+    text = comment_message(
+        event,
+        domain,
+        "<@&111111111111111111> и <@222222222222222222>, @vasya глянь",
+        actor_name="mgr",
+        by_handle=BY_HANDLE,
+        channel_type="discord",
+    )
+    am = discord_allowed_mentions(text)
+    # Only the directory person rendered by us is pinged; raw ids typed by a user are not.
+    assert am["users"] == ["123456789012345678"] and am["roles"] == []

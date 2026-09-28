@@ -23,7 +23,10 @@
       <td>{% if p.is_active %}{{ ui.badge("активен", "green") }}{% else %}{{ ui.badge("отключён", "gray") }}{% endif %}</td>
       <td class="whitespace-nowrap">
         <a href="/people/{{ p.id }}/edit" class="link">Изменить</a>
-        <form method="post" action="/people/{{ p.id }}/delete" class="inline" onsubmit="return confirm('Удалить {{ p.name }}? Его правила маршрутизации удалятся, алерты останутся без ответственного.');">
+        {# User data stays out of the JS source: the handler reads a data-attribute. #}
+        <form method="post" action="/people/{{ p.id }}/delete" class="inline"
+              data-confirm="Удалить {{ p.name }}? Его правила маршрутизации удалятся, алерты останутся без ответственного."
+              onsubmit="return confirm(this.dataset.confirm);">
           <button class="btn-link-danger">Удалить</button>
         </form>
       </td>

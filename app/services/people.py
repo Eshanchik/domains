@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import record_audit
@@ -27,11 +28,13 @@ from app.models.person import PERSON_KINDS, AlertRoute, Person
 
 ROUTE_KINDS = ("*", "expiry", "ssl", "vt_malicious", "health_down", "ns_change")
 
-_HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
+# A handle may contain "_ . -" inside but must end with a letter/digit/"_", so the
+# trailing dot of "передаю @vasya." is punctuation, not part of the handle.
+_HANDLE_RE = re.compile(r"^[a-z0-9](?:[a-z0-9_.-]{0,62}[a-z0-9_])?$")
 _DISCORD_RE = re.compile(r"^\d{15,22}$")
 _TELEGRAM_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{3,31}$")
 # An @handle token in free text: not preceded by a word char (so e-mails don't match).
-MENTION_RE = re.compile(r"(?<![\w@])@([a-z0-9][a-z0-9_.-]{0,63})", re.IGNORECASE)
+MENTION_RE = re.compile(r"(?<![\w@])@([a-z0-9](?:[a-z0-9_.-]{0,62}[a-z0-9_])?)", re.IGNORECASE)
 
 
 class PersonError(ValueError):
@@ -127,6 +130,22 @@ async def _check_unique(
             raise PersonError("Этот пользователь DomainGuard уже привязан к другому человеку.")
 
 
+# Fields recorded in the audit log for people (secrets never live here).
+_AUDITED = (
+    "kind",
+    "name",
+    "handle",
+    "discord_id",
+    "telegram_username",
+    "user_id",
+    "note",
+    "is_active",
+)
+_RACE_MESSAGE = (
+    "Ник или привязанный пользователь уже заняты — обновите страницу и попробуйте снова."
+)
+
+
 def _clean(
     *,
     kind: str,
@@ -173,14 +192,18 @@ async def create_person(
     await _check_unique(session, handle=fields["handle"], user_id=user_id, exclude_id=None)
     person = Person(**fields, user_id=user_id, note=(note or "").strip()[:255] or None)
     session.add(person)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError as exc:  # a concurrent save won the unique race
+        await session.rollback()
+        raise PersonError(_RACE_MESSAGE) from exc
     await record_audit(
         session,
         actor_id=actor_id,
         action="create",
         entity_type="person",
         entity_id=person.id,
-        diff={"handle": person.handle, "kind": person.kind},
+        diff={key: getattr(person, key) for key in _AUDITED},
     )
     await session.commit()
     await session.refresh(person)
@@ -210,21 +233,31 @@ async def update_person(
     )
     user_id = user_id if kind == "person" else None
     await _check_unique(session, handle=fields["handle"], user_id=user_id, exclude_id=person.id)
-    old = {"handle": person.handle, "kind": person.kind, "is_active": person.is_active}
+    before = {key: getattr(person, key) for key in _AUDITED}
     for key, value in fields.items():
         setattr(person, key, value)
     person.user_id = user_id
     person.note = (note or "").strip()[:255] or None
     person.is_active = is_active
-    await record_audit(
-        session,
-        actor_id=actor_id,
-        action="update",
-        entity_type="person",
-        entity_id=person.id,
-        diff={"old": old, "new": {"handle": person.handle, "kind": kind, "is_active": is_active}},
-    )
-    await session.commit()
+    changed = {
+        key: {"old": before[key], "new": getattr(person, key)}
+        for key in _AUDITED
+        if before[key] != getattr(person, key)
+    }
+    if changed:
+        await record_audit(
+            session,
+            actor_id=actor_id,
+            action="update",
+            entity_type="person",
+            entity_id=person.id,
+            diff=changed,
+        )
+    try:
+        await session.commit()
+    except IntegrityError as exc:  # a concurrent save won the unique race
+        await session.rollback()
+        raise PersonError(_RACE_MESSAGE) from exc
     await session.refresh(person)
     return person
 
@@ -333,6 +366,15 @@ async def set_route(
             company_id=company_id, project_id=project_id, kind=kind, person_id=person_id
         )
         session.add(route)
+        try:
+            await session.flush()
+        except IntegrityError:
+            # A concurrent save created the same (scope, kind) rule first — update it.
+            await session.rollback()
+            route = await session.scalar(stmt)
+            if route is None:
+                raise
+            route.person_id = person_id
     else:
         route.person_id = person_id
     await session.flush()
@@ -408,6 +450,18 @@ async def route_for(session: AsyncSession, domain: Domain, kind: str) -> Person 
 # --- mentions ------------------------------------------------------------------
 
 
+def slack_escape(text: str) -> str:
+    """Slack treats ``<…>`` as control sequences (``<!channel>``, ``<@U…>``) — escape
+    ``& < >`` so user text is shown literally and can never ping the channel."""
+    return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def neutralize_discord_mentions(text: str) -> str:
+    """Break raw ``<@id>`` / ``<@&id>`` typed by a user so only people from the
+    directory (rendered by us afterwards) can be pinged."""
+    return (text or "").replace("<@", "<\u200b@")
+
+
 def mention(person: Person | PersonRef | None, channel_type: str) -> str:
     """How ``person`` is written in a message for ``channel_type`` (pings where possible)."""
     if person is None:
@@ -418,7 +472,8 @@ def mention(person: Person | PersonRef | None, channel_type: str) -> str:
         return f"@{person.telegram_username}"
     if channel_type in ("discord", "telegram"):
         return person.name  # no id for this network → name only, no ping
-    return f"{person.name} (@{person.handle})"
+    name = f"{person.name} (@{person.handle})"
+    return slack_escape(name) if channel_type == "slack" else name
 
 
 async def people_by_handle(session: AsyncSession) -> dict[str, Person]:

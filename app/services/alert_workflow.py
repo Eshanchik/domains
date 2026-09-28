@@ -121,12 +121,13 @@ async def auto_assign(session: AsyncSession, domain: Domain, events: list[AlertE
         await session.flush()  # make the predecessor's resolved_at visible
         prev = await session.scalar(
             select(AlertEvent)
+            .join(Person, Person.id == AlertEvent.assignee_person_id)
             .where(
                 AlertEvent.domain_id == domain.id,
                 AlertEvent.kind == ev.kind,
                 AlertEvent.id != ev.id,
-                AlertEvent.assignee_person_id.is_not(None),
                 AlertEvent.resolved_at == ev.fired_at,
+                Person.is_active.is_(True),  # a disabled owner is re-routed, not carried
             )
             .order_by(AlertEvent.id.desc())
             .limit(1)
@@ -147,6 +148,14 @@ async def auto_assign(session: AsyncSession, domain: Domain, events: list[AlertE
             data={"to": ev.assignee_person_id, "via": via},
             at=ev.fired_at,
         )
+
+
+async def active_owner(session: AsyncSession, event: AlertEvent) -> Person | None:
+    """The alert's owner if they may be mentioned (disabled people are never pinged)."""
+    if event.assignee_person_id is None:
+        return None
+    owner = await session.get(Person, event.assignee_person_id)
+    return owner if owner is not None and owner.is_active else None
 
 
 # --- messages ------------------------------------------------------------------
@@ -184,6 +193,10 @@ def comment_message(
     by_handle: dict,
     channel_type: str,
 ) -> str:
+    if channel_type == "discord":
+        body = people.neutralize_discord_mentions(body)
+    elif channel_type == "slack":
+        body = people.slack_escape(body)
     lines = [
         _headline(event, domain),
         f"💬 {actor_name}: {people.render_mentions(body, by_handle, channel_type)}",
@@ -430,13 +443,18 @@ async def timeline(session: AsyncSession, event: AlertEvent) -> list[TimelineIte
         d = a.data_json or {}
         who = _who(users, a.actor_user_id)
         if a.kind == "notified":
-            has_delivery = True
             chans = ", ".join(f"«{c}»" for c in d.get("channels") or []) or "—"
-            text = f"Отправлено в {chans}"
-            if d.get("reason") == "assigned":
-                text = f"Пинг ответственному → {chans}"
             mentioned = [_person_name(persons, i) for i in d.get("mentions") or []]
-            items.append(TimelineItem(a.at, "✔", "--ok", text, mentions=mentioned))
+            if d.get("reason") == "assigned":
+                # Sent synchronously — these channel names are confirmed deliveries.
+                text = f"Пинг ответственному → {chans}"
+                items.append(TimelineItem(a.at, "✔", "--ok", text, mentions=mentioned))
+            else:
+                # Instant alerts are queued to the worker; the real result per channel
+                # is in «Доставка» (NotificationLog), so don't claim success here.
+                has_delivery = True
+                text = f"Поставлено в отправку: {chans} (результат — в «Доставке»)"
+                items.append(TimelineItem(a.at, "→", "--cyan", text, mentions=mentioned))
         elif a.kind == "digest":
             has_delivery = True
             items.append(
@@ -472,17 +490,39 @@ async def timeline(session: AsyncSession, event: AlertEvent) -> list[TimelineIte
             )
         elif a.kind == "resolved":
             has_resolved = True
-            items.append(TimelineItem(a.at, "✔", "--ok", "Закрыт", actor=who, body=a.body))
+            reason = d.get("reason")
+            if a.actor_user_id is not None or reason is None:
+                items.append(TimelineItem(a.at, "✔", "--ok", "Закрыт", actor=who, body=a.body))
+            elif reason == "superseded":
+                text = "Заменён более срочным порогом"
+                if isinstance(d.get("by"), int):
+                    text += f" → алерт #{d['by']}"
+                items.append(TimelineItem(a.at, "↗", "--cyan", text))
+            elif reason == "archived":
+                items.append(TimelineItem(a.at, "✔", "--dim", "Закрыт: домен заархивирован"))
+            else:
+                text = "Закрыт автоматически: проблема больше не видна"
+                items.append(TimelineItem(a.at, "✔", "--ok", text))
 
     # Deliveries before T97 were not journaled — show the recorded moment.
     if event.notified_at is not None and not has_delivery:
-        items.append(TimelineItem(event.notified_at, "✔", "--ok", "Доставлено в каналы"))
+        items.append(TimelineItem(event.notified_at, "→", "--cyan", "Отправлено в каналы"))
     if event.state == "resolved" and not has_resolved and event.resolved_at is not None:
-        items.append(
-            TimelineItem(
-                event.resolved_at, "✔", "--ok", "Закрыт автоматически: проблема больше не видна"
+        # Closed before T97 journaled closures: an event of the same kind fired at the
+        # very moment of closing means it was superseded by a tighter threshold.
+        successor = await session.scalar(
+            select(AlertEvent.id).where(
+                AlertEvent.domain_id == event.domain_id,
+                AlertEvent.kind == event.kind,
+                AlertEvent.id != event.id,
+                AlertEvent.fired_at == event.resolved_at,
             )
         )
+        if successor is not None:
+            text = f"Заменён более срочным порогом → алерт #{successor}"
+            items.append(TimelineItem(event.resolved_at, "↗", "--cyan", text))
+        else:
+            items.append(TimelineItem(event.resolved_at, "✔", "--ok", "Закрыт"))
     items.sort(key=lambda i: i.at)
     return items
 

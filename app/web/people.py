@@ -96,8 +96,9 @@ async def person_create(
             actor_id=user.id,
         )
     except svc.PersonError as exc:
-        # Validation fails before any write, so there is nothing to roll back (and a
-        # rollback would expire the request's `user`, breaking the template render).
+        # The service may have rolled back (unique race), which expires the request's
+        # `user`; reload it before rendering so the template doesn't lazy-load.
+        await session.refresh(user)
         form = {
             "kind": kind,
             "name": name,
@@ -140,6 +141,7 @@ async def route_set(
             actor_id=user.id,
         )
     except svc.PersonError as exc:
+        await session.refresh(user)
         return await _render_list(request, session, user, error=str(exc), status_code=422)
     return RedirectResponse("/people#routes", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -204,6 +206,8 @@ async def person_update(
             actor_id=user.id,
         )
     except svc.PersonError as exc:
+        await session.refresh(user)
+        await session.refresh(person)
         return templates.TemplateResponse(
             request,
             "people/edit.html",

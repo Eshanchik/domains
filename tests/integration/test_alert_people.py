@@ -563,3 +563,219 @@ def test_deleting_a_person_unassigns_and_drops_routes(make_company, make_project
 
     assert _run(delete()) == []
     assert _event(eid).assignee_person_id is None
+
+
+# --- review fixes --------------------------------------------------------------------
+
+
+def _deactivate(pid: int) -> None:
+    async def _c() -> None:
+        async with SessionLocal() as s:
+            p = await people.get_person(s, pid)
+            await people.update_person(
+                s,
+                p,
+                kind=p.kind,
+                name=p.name,
+                handle=p.handle,
+                discord_id=p.discord_id,
+                telegram_username=p.telegram_username,
+                user_id=p.user_id,
+                note=p.note,
+                is_active=False,
+                actor_id=None,
+            )
+
+    _run(_c())
+
+
+def _timeline_texts(event_id: int) -> list[str]:
+    async def _c():
+        async with SessionLocal() as s:
+            return [i.text for i in await wf.timeline(s, await s.get(AlertEvent, event_id))]
+
+    return _run(_c())
+
+
+def test_escalation_reroutes_when_the_carried_owner_is_disabled(
+    make_user, make_company, make_project, make_domain
+):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="left.com", expiry_date=NOW + timedelta(days=20))
+    leaver = _person("leaver", discord="111111111111111111")
+    successor = _person("successor", discord=VASYA_ID)
+    _route(leaver, "expiry")
+    _channel("discord", name="Adera alert")
+    [first] = _fire(dom, sent=[])
+    assert _event(first).assignee_person_id == leaver
+
+    _deactivate(leaver)  # left the company …
+    _route(successor, "expiry")  # … and the rule now points at the successor
+    _set_expiry(dom, 5)
+    sent: list = []
+    [second] = _fire(dom, sent=sent)
+
+    assert _event(second).assignee_person_id == successor  # re-routed, not carried
+    assert f"<@{VASYA_ID}>" in sent[0][1]
+    assert "<@111111111111111111>" not in sent[0][1]  # the disabled person is never pinged
+
+
+def test_disabled_owner_is_not_pinged_on_instant_dispatch(make_company, make_project, make_domain):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="d.com", expiry_date=NOW + timedelta(days=3))
+    gone = _person("gone", discord=VASYA_ID)
+
+    async def pre_assigned_event() -> None:
+        # An already-active 7-day event owned by a person who is then disabled.
+        async with SessionLocal() as s:
+            s.add(
+                AlertEvent(
+                    domain_id=dom,
+                    kind="health_down",
+                    dedupe_key=f"{dom}:health:1",
+                    severity="high",
+                    state="active",
+                    payload_json={"healthcheck_id": 1},
+                    assignee_person_id=gone,
+                )
+            )
+            await s.commit()
+
+    _run(pre_assigned_event())
+    _deactivate(gone)
+    _channel("discord")
+
+    async def dispatch():
+        sent: list = []
+        async with SessionLocal() as s:
+            ev = await s.scalar(select(AlertEvent).where(AlertEvent.domain_id == dom))
+            await alerts.dispatch_instant(
+                s,
+                None,
+                await s.get(Domain, dom),
+                [ev],
+                send=lambda cid, text, eid: sent.append(text),
+            )
+        return sent
+
+    [text] = _run(dispatch())
+    assert f"<@{VASYA_ID}>" not in text and "👤" not in text
+
+
+def test_timeline_explains_system_closures(make_user, make_company, make_project, make_domain):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="t.com", expiry_date=NOW + timedelta(days=20))
+    [first] = _fire(dom, sent=[])
+    _set_expiry(dom, 5)
+    [second] = _fire(dom, sent=[])
+    assert f"Заменён более срочным порогом → алерт #{second}" in _timeline_texts(first)
+
+    # Renewed far ahead → the problem is gone.
+    _set_expiry(dom, 300)
+    _fire(dom, sent=[])
+    assert "Закрыт автоматически: проблема больше не видна" in _timeline_texts(second)
+
+    # Archiving closes the remaining alerts of the domain with its own reason.
+    _set_expiry(dom, 3)
+    [third] = _fire(dom, sent=[])
+
+    async def archive():
+        async with SessionLocal() as s:
+            await alerts.resolve_domain_alerts(s, dom)
+            await s.commit()
+
+    _run(archive())
+    assert "Закрыт: домен заархивирован" in _timeline_texts(third)
+
+
+def test_instant_dispatch_is_shown_as_queued_not_delivered(make_company, make_project, make_domain):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    dom = make_domain(proj, fqdn="q.com", expiry_date=NOW + timedelta(days=3))
+    _channel("discord", name="Adera alert")
+    [eid] = _fire(dom, sent=[])
+    texts = _timeline_texts(eid)
+    assert any(t.startswith("Поставлено в отправку: «Adera alert»") for t in texts)
+    assert "Отправлено в каналы" not in texts
+
+
+def test_assignment_ping_does_not_hide_legacy_delivery(
+    make_user, make_company, make_project, make_domain
+):
+    eid, dom, uid = _setup_alert(make_user, make_company, make_project, make_domain)
+    vasya = _person("vasya", discord=VASYA_ID)
+    _channel("discord")
+
+    async def legacy_notified():
+        async with SessionLocal() as s:
+            ev = await s.get(AlertEvent, eid)
+            ev.notified_at = NOW  # delivered before T97 journaling existed
+            await s.commit()
+
+    _run(legacy_notified())
+    out: list = []
+    _with(
+        eid,
+        dom,
+        uid,
+        lambda s, ev, d, u: wf.assign(
+            s, ev, d, vasya, actor=u, notify=True, deliver=_fake_deliver(out)
+        ),
+    )
+    texts = _timeline_texts(eid)
+    assert any(t.startswith("Пинг ответственному") for t in texts)
+    assert "Отправлено в каналы" in texts  # the legacy delivery is still shown
+
+
+def test_person_audit_records_every_changed_field(make_user):
+    pid = _person("vasya", discord=VASYA_ID)
+
+    async def change():
+        async with SessionLocal() as s:
+            p = await people.get_person(s, pid)
+            await people.update_person(
+                s,
+                p,
+                kind="person",
+                name="Вася",
+                handle="vasya",
+                discord_id="222222222222222222",
+                telegram_username="vasya_ops",
+                user_id=None,
+                note=None,
+                is_active=True,
+                actor_id=None,
+            )
+            return (
+                await s.execute(
+                    select(AuditLog).where(
+                        AuditLog.entity_type == "person", AuditLog.action == "update"
+                    )
+                )
+            ).scalar_one()
+
+    entry = _run(change())
+    diff = entry.diff_json
+    assert diff["discord_id"] == {"old": VASYA_ID, "new": "222222222222222222"}
+    assert diff["telegram_username"] == {"old": None, "new": "vasya_ops"}
+    assert diff["name"] == {"old": "Vasya", "new": "Вася"}
+    assert "handle" not in diff  # unchanged fields are not logged
+
+
+def test_unique_race_becomes_a_friendly_error(monkeypatch):
+    _person("vasya")
+
+    async def skip_check(*args, **kwargs):  # simulate two requests passing the check
+        return None
+
+    monkeypatch.setattr(people, "_check_unique", skip_check)
+
+    async def create_dup():
+        async with SessionLocal() as s:
+            await people.create_person(s, kind="person", name="Dup", handle="vasya", actor_id=None)
+
+    with pytest.raises(people.PersonError, match="уже заняты"):
+        _run(create_dup())

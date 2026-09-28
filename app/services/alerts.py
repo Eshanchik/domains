@@ -74,6 +74,10 @@ async def _ensure_active(
 async def _resolve(
     session: AsyncSession, *, domain_id: int, kind: str, keep_key: str | None, now: datetime
 ) -> None:
+    """Close the domain's active ``kind`` events except ``keep_key``. Each closure is
+    journaled with why: superseded by the kept (tighter) event, or the problem cleared."""
+    from app.services.alert_workflow import record_activity
+
     result = await session.execute(
         select(AlertEvent).where(
             AlertEvent.domain_id == domain_id,
@@ -81,11 +85,15 @@ async def _resolve(
             AlertEvent.state == "active",
         )
     )
-    for ev in result.scalars().all():
+    events = list(result.scalars().all())
+    keeper = next((e.id for e in events if keep_key is not None and e.dedupe_key == keep_key), None)
+    for ev in events:
         if keep_key is not None and ev.dedupe_key == keep_key:
             continue
         ev.state = "resolved"
         ev.resolved_at = now
+        reason = {"reason": "superseded", "by": keeper} if keeper else {"reason": "cleared"}
+        record_activity(session, ev.id, "resolved", data=reason, at=now)
 
 
 async def resolve_event(
@@ -141,9 +149,12 @@ async def resolve_domain_alerts(
         .scalars()
         .all()
     )
+    from app.services.alert_workflow import record_activity
+
     for ev in rows:
         ev.state = "resolved"
         ev.resolved_at = ts
+        record_activity(session, ev.id, "resolved", data={"reason": "archived"}, at=ts)
     return len(rows)
 
 
@@ -423,20 +434,15 @@ async def dispatch_instant(
 
         send = lambda cid, text, eid: send_notification.send(cid, text, eid)  # noqa: E731
 
-    from app.models.person import Person
     from app.services import people
-    from app.services.alert_workflow import alert_url, record_activity
+    from app.services.alert_workflow import active_owner, alert_url, record_activity
 
     project, company = await domain_location(session, domain)
     account = await account_label(session, domain)
     ts = now or datetime.now(UTC)
     count = 0
     for event in high:
-        owner = (
-            await session.get(Person, event.assignee_person_id)
-            if event.assignee_person_id is not None
-            else None
-        )
+        owner = await active_owner(session, event)
         for channel in channels:
             text = build_message(
                 event,

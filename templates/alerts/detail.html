@@ -42,6 +42,10 @@
   <div class="flash flash-success mb-4">Ответственный сохранён{% if sent %}, упоминание отправлено в каналы: {{ sent }}{% endif %}.</div>
 {% elif msg == "acked" %}
   <div class="flash flash-success mb-4">Алерт взят в работу.</div>
+{% elif msg == "already_acked" %}
+  <div class="flash mb-4">Алерт уже взят в работу{% if acked_by %} ({{ acked_by.login }}){% endif %}.</div>
+{% elif msg == "not_active" %}
+  <div class="flash mb-4">Алерт уже закрыт.</div>
 {% elif msg == "commented" %}
   {% if sent is none %}<div class="flash flash-success mb-4">Комментарий добавлен.</div>
   {% elif sent > 0 %}<div class="flash flash-success mb-4">Комментарий добавлен и отправлен в каналы: {{ sent }}.</div>
