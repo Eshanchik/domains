@@ -22,6 +22,7 @@
   Новых проверок: {{ report.checks_created }}.
   {% if report.already %}<br>Уже были в трекинге: {{ report.already | join(", ") }}.{% endif %}
   {% if report.missing %}<br><span style="color:var(--amber)">Нет в реестре (сначала добавьте домен): {{ report.missing | join(", ") }}.</span>{% endif %}
+  {% if report.archived %}<br><span style="color:var(--amber)">В архиве (сначала разархивируйте в карточке): {{ report.archived | join(", ") }}.</span>{% endif %}
   {% if report.forbidden %}<br><span style="color:var(--amber)">Нет доступа: {{ report.forbidden | join(", ") }}.</span>{% endif %}
   {% if report.invalid %}<br><span style="color:var(--amber)">Не похоже на домен: {{ report.invalid | join(", ") }}.</span>{% endif %}
 </div>
@@ -83,7 +84,7 @@
 <div id="access"></div>
 {% call ui.panel("Страница статуса для сотрудников") %}
 <div style="padding:12px 18px 0" class="space-y-2 text-sm">
-  <p>Ссылка: <a href="/status/tracking" class="link font-mono" target="_blank" rel="noopener">{{ request.base_url }}status/tracking</a>
+  <p>Ссылка: <a href="/status/tracking" class="link font-mono" target="_blank" rel="noopener">{{ status_url }}</a>
     — только список трекеров и их состояние, без доступа к остальному DomainGuard.</p>
   <p class="text-xs muted">Вход — рабочим Google-аккаунтом: домен почты должен совпасть с правилом, и аккаунт должен
     принадлежать Google Workspace этого домена (личный Google на рабочий адрес не пустит). Сессия — 12 часов.</p>

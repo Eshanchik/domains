@@ -38,14 +38,16 @@ KYIV = ZoneInfo("Europe/Kyiv")
 TRACKING_TAG = "tracking"
 SPARK_LEN = 24
 DEFAULT_TEMPLATE = "https://{fqdn}/"
-STATUS_ORDER = {"down": 0, "degraded": 1, "unknown": 2, "nocheck": 3, "up": 4}
+STATUS_ORDER = {"down": 0, "degraded": 1, "stale": 2, "unknown": 3, "nocheck": 4, "up": 5}
 STATUS_LABELS = {
     "up": "работает",
     "down": "лежит",
     "degraded": "сбоит",
+    "stale": "нет свежих проверок",
     "unknown": "ещё не проверен",
     "nocheck": "нет проверки",
 }
+EDGE_WINDOW = timedelta(days=30)  # "down/up since" looks this far back (bounded scan)
 
 
 @dataclass
@@ -187,11 +189,22 @@ async def _tracking_domains(
 # --- board ---------------------------------------------------------------------------
 
 
-def _check_status(hc: HealthCheck) -> str:
+def _is_stale(hc: HealthCheck, ts: datetime) -> bool:
+    """No result for 3 intervals (min. 1 h): the check stopped running (scheduler/worker
+    down, egress lost) — its last state can no longer be trusted."""
+    if hc.last_checked_at is None:
+        return False
+    grace = timedelta(minutes=max(3 * (hc.interval_min or 15), 60))
+    return hc.last_checked_at < ts - grace
+
+
+def _check_status(hc: HealthCheck, ts: datetime) -> str:
     if hc.state == "down":
         return "down"
     if hc.last_checked_at is None:
         return "unknown"
+    if _is_stale(hc, ts):
+        return "stale"
     if hc.consecutive_failures > 0:
         return "degraded"
     return "up"
@@ -227,9 +240,9 @@ async def build_board(
     check_ids = [hc.id for lst in checks.values() for hc in lst]
 
     window = await _window_stats(session, check_ids, ts)
-    edges = await _edges(session, check_ids)
+    edges = await _edges(session, check_ids, ts)
     primary = {
-        did: min(lst, key=lambda h: (STATUS_ORDER[_check_status(h)], h.id))
+        did: min(lst, key=lambda h: (STATUS_ORDER[_check_status(h, ts)], h.id))
         for did, lst in checks.items()
         if lst
     }
@@ -258,7 +271,7 @@ async def build_board(
         )
         if lst:
             hc = primary[d.id]
-            row.status = _check_status(hc)
+            row.status = _check_status(hc, ts)
             row.status_label = STATUS_LABELS[row.status]
             row.url = hc.url
             ok24 = sum(window.get(h.id, (0, 0, 0, 0))[1] for h in lst)
@@ -294,8 +307,18 @@ async def build_board(
                     row.since_label = f"работает {prefix}{duration_label(ts - start)}"
                 elif row.status == "degraded":
                     row.since_label = f"сбоев подряд: {hc.consecutive_failures}"
+            elif row.status == "stale" and hc.last_checked_at is not None:
+                row.since_label = f"последняя — {duration_label(ts - hc.last_checked_at)} назад"
         rows.append(row)
 
+    # Totals describe the whole (scoped) fleet — computed before the status filter so the
+    # tiles keep showing e.g. "✔ 15 · ✖ 4" while the table shows only the down ones.
+    totals = dict.fromkeys(STATUS_ORDER, 0)
+    for r in rows:
+        totals[r.status] += 1
+    totals["total"] = len(rows)
+    totals["vt"] = sum(1 for r in rows if r.vt_malicious)
+    totals["expiring"] = sum(1 for r in rows if r.expiry_days is not None and r.expiry_days <= 30)
     if status in STATUS_ORDER:
         rows = [r for r in rows if r.status == status]
     rows.sort(
@@ -305,12 +328,6 @@ async def build_board(
             r.fqdn,
         )
     )
-    totals = dict.fromkeys(STATUS_ORDER, 0)
-    for r in rows:
-        totals[r.status] += 1
-    totals["total"] = len(rows)
-    totals["vt"] = sum(1 for r in rows if r.vt_malicious)
-    totals["expiring"] = sum(1 for r in rows if r.expiry_days is not None and r.expiry_days <= 30)
     return TrackingBoard(rows, totals, _kyiv(ts, "%d.%m.%Y %H:%M"))
 
 
@@ -337,9 +354,12 @@ async def _window_stats(
 
 
 async def _edges(
-    session: AsyncSession, check_ids: list[int]
+    session: AsyncSession, check_ids: list[int], ts: datetime
 ) -> dict[int, tuple[datetime | None, datetime | None, datetime | None]]:
-    """check id → (last ok at, last failure at, first result at) over all history."""
+    """check id → (last ok at, last failure at, first result at) within EDGE_WINDOW.
+
+    Bounded so the 60-second auto-refresh never scans a year of history; an edge older
+    than the window shows as «≥ 30 д»."""
     if not check_ids:
         return {}
     r = HealthCheckResult
@@ -350,7 +370,11 @@ async def _edges(
             func.max(r.checked_at).filter(not_(r.ok)),
             func.min(r.checked_at),
         )
-        .where(r.healthcheck_id.in_(check_ids))
+        .where(
+            r.healthcheck_id.in_(check_ids),
+            r.checked_at >= ts - EDGE_WINDOW,
+            r.checked_at <= ts,
+        )
         .group_by(r.healthcheck_id)
     )
     return {hid: (last_ok, last_fail, first) for hid, last_ok, last_fail, first in rows.all()}
@@ -484,6 +508,7 @@ class AddReport:
     already: list[str] = field(default_factory=list)  # were tracking already
     checks_created: int = 0
     missing: list[str] = field(default_factory=list)  # not in the registry
+    archived: list[str] = field(default_factory=list)  # in the registry but archived
     forbidden: list[str] = field(default_factory=list)  # outside the user's scope
     invalid: list[str] = field(default_factory=list)  # not a domain
 
@@ -522,7 +547,10 @@ async def add_to_tracking(
         follow_redirects=follow_redirects,
     )
     report = AddReport()
-    tag = await companies_svc.get_or_create_tag(session, TRACKING_TAG)
+    # Reuse an existing tag whatever its case ("Tracking"), so we never create a twin.
+    tag = await session.scalar(
+        select(Tag).where(func.lower(Tag.name) == TRACKING_TAG).order_by(Tag.id).limit(1)
+    ) or await companies_svc.get_or_create_tag(session, TRACKING_TAG)
     seen: set[str] = set()
     for raw in fqdns:
         raw = raw.strip()
@@ -537,13 +565,16 @@ async def add_to_tracking(
             continue
         seen.add(fqdn)
         domain = await session.scalar(select(Domain).where(Domain.fqdn == fqdn))
-        if domain is None or not domain.is_active:
+        if domain is None:
             report.missing.append(fqdn)
+            continue
+        if not domain.is_active:
+            report.archived.append(fqdn)
             continue
         if allowed is not None and domain.project_id not in allowed:
             report.forbidden.append(fqdn)
             continue
-        if any(t.id == tag.id for t in domain.tags):
+        if any(t.name.lower() == TRACKING_TAG for t in domain.tags):
             report.already.append(fqdn)
         else:
             domain.tags = [*domain.tags, tag]
@@ -631,12 +662,21 @@ async def recheck(
 # --- status page access ---------------------------------------------------------------
 
 STATUS_ACCESS_KEY = "status_access"
+# pg_advisory_xact_lock key serializing read-modify-write of the rules JSON (so two
+# admins can't silently undo each other's revocation).
+_ACCESS_LOCK_ID = 0x44475354  # "DGST"
 
 
 @dataclass(frozen=True)
 class AccessRule:
     email_domain: str  # e.g. "adera.agency"
     company_id: int | None  # None = tracking domains of every company
+    # When this rule (re)started: sessions issued before it are void, so deleting and
+    # re-adding a rule never resurrects old sessions.
+    since: str | None = field(default=None, compare=False)
+
+    def accepts_session(self, issued_at: str | None) -> bool:
+        return self.since is None or (issued_at is not None and issued_at >= self.since)
 
 
 async def get_access_rules(session: AsyncSession) -> list[AccessRule]:
@@ -648,17 +688,29 @@ async def get_access_rules(session: AsyncSession) -> list[AccessRule]:
     except ValueError:
         return []
     return [
-        AccessRule(str(r["email_domain"]).lower(), r.get("company_id"))
+        AccessRule(str(r["email_domain"]).lower(), r.get("company_id"), r.get("since"))
         for r in data
         if isinstance(r, dict) and r.get("email_domain")
     ]
 
 
+def stamp() -> str:
+    """Sortable UTC timestamp for rule generations and session issue times."""
+    return datetime.now(UTC).isoformat(timespec="microseconds")
+
+
+async def _lock_rules(session: AsyncSession) -> None:
+    await session.execute(select(func.pg_advisory_xact_lock(_ACCESS_LOCK_ID)))
+
+
 async def _save_rules(session: AsyncSession, rules: list[AccessRule]) -> None:
     payload = json.dumps(
-        [{"email_domain": r.email_domain, "company_id": r.company_id} for r in rules]
+        [
+            {"email_domain": r.email_domain, "company_id": r.company_id, "since": r.since}
+            for r in rules
+        ]
     )
-    await settings_store.set_secret(session, STATUS_ACCESS_KEY, payload)
+    await settings_store.set_secret(session, STATUS_ACCESS_KEY, payload)  # commits → unlocks
 
 
 def normalize_email_domain(value: str) -> str:
@@ -674,8 +726,9 @@ async def add_access_rule(
     domain = normalize_email_domain(email_domain)
     if company_id is not None and await session.get(Company, company_id) is None:
         raise TrackingError("Компания не найдена.")
+    await _lock_rules(session)
     rules = [r for r in await get_access_rules(session) if r.email_domain != domain]
-    rules.append(AccessRule(domain, company_id))
+    rules.append(AccessRule(domain, company_id, stamp()))
     await _save_rules(session, rules)
     await record_audit(
         session,
@@ -690,6 +743,7 @@ async def add_access_rule(
 
 async def delete_access_rule(session: AsyncSession, *, email_domain: str, actor_id: int) -> None:
     domain = (email_domain or "").strip().lower()
+    await _lock_rules(session)
     rules = await get_access_rules(session)
     await _save_rules(session, [r for r in rules if r.email_domain != domain])
     await record_audit(

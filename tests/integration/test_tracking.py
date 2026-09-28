@@ -131,6 +131,7 @@ def test_board_status_since_uptime_history(make_company, make_project, make_doma
     assert board.totals == {
         "down": 1,
         "degraded": 1,
+        "stale": 0,
         "unknown": 0,
         "nocheck": 1,
         "up": 1,
@@ -283,3 +284,56 @@ def test_access_rules_roundtrip_and_scope(make_company, make_project):
     assert rules == [t.AccessRule("adera.agency", adera)]  # re-adding replaces
     assert scope == {p1}
     assert after == []
+
+
+# --- review fixes ----------------------------------------------------------------------
+
+
+def test_stale_check_is_not_reported_as_up(make_company, make_project, make_domain):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    d = make_domain(proj, fqdn="silent.com")
+    _tag(d)
+    hc = _check(d, results=[(180, True, 302, None)])
+
+    async def last_checked_3h_ago():
+        async with SessionLocal() as s:
+            h = await s.get(HealthCheck, hc)
+            h.last_checked_at = NOW - timedelta(hours=3)  # interval 15 min → stale after 1 h
+            await s.commit()
+
+    _run(last_checked_3h_ago())
+    [row] = _board().rows
+    assert row.status == "stale" and row.since_label == "последняя — 3 ч 0 мин назад"
+
+
+def test_totals_ignore_the_status_filter(make_company, make_project, make_domain):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    for name, ok in (("a.com", True), ("b.com", False)):
+        d = make_domain(proj, fqdn=name)
+        _tag(d)
+        _check(d, state="up" if ok else "down", results=[(0, ok, 302 if ok else None, None)])
+    board = _board(status="down")
+    assert [r.fqdn for r in board.rows] == ["b.com"]
+    assert board.totals["total"] == 2 and board.totals["up"] == 1 and board.totals["down"] == 1
+
+
+def test_add_reuses_differently_cased_tag_and_reports_archived(
+    make_company, make_project, make_domain
+):
+    acme = make_company(code="acme")
+    proj = make_project(acme, code="web")
+    tagged = make_domain(proj, fqdn="cased.com")
+    make_domain(proj, fqdn="old.com", is_active=False)
+    _tag(tagged, name="Tracking")
+    rep = _add(["cased.com", "old.com"])
+    assert rep.already == ["cased.com"] and rep.added == []
+    assert rep.archived == ["old.com"] and rep.missing == []
+
+    async def tag_names():
+        async with SessionLocal() as s:
+            d = await s.get(Domain, tagged)
+            return sorted(t.name for t in d.tags)
+
+    assert _run(tag_names()) == ["Tracking"]  # no twin "tracking" tag added

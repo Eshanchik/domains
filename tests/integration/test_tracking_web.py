@@ -112,7 +112,7 @@ def test_manager_adds_rechecks_and_removes(
     assert "fresh.com" in client.get("/tracking").text
 
     bad = client.post("/tracking/add", data={"fqdns": "fresh.com", "url_template": "https://x/"})
-    assert bad.status_code == 422 and "{fqdn}" in bad.text
+    assert bad.status_code == 422 and "В шаблоне URL должен быть" in bad.text
 
     r = client.post(f"/tracking/{d}/recheck", follow_redirects=False)
     assert r.headers["location"] == "/tracking?msg=recheck1"
@@ -132,7 +132,7 @@ def test_access_rules_admin_only(client, make_user, two_companies):
         data={"email_domain": "@adera.agency", "company_id": str(two_companies["adera"])},
     )
     page = client.get("/tracking").text
-    assert "@adera.agency" in page and "компании" in page.lower()
+    assert "@adera.agency" in page and "<td>Adera</td>" in page  # rule → company Adera
     client.post("/tracking/access/delete", data={"email_domain": "adera.agency"})
     assert "Доступ никому не открыт" in client.get("/tracking").text
 
@@ -231,8 +231,10 @@ def test_status_login_refuses_non_workspace_accounts(
 ):
     _allow(two_companies["adera"])
     _, cb = _status_login(client, monkeypatch, email, hd, verified)
-    assert cb.status_code == 403 and "Доступ только" in cb.text
+    assert cb.status_code == 403 and "не имеет доступа" in cb.text
     assert not client.cookies.get("dg_status")
+    if not email.endswith("@adera.agency"):
+        assert "adera.agency" not in cb.text  # configured domains are never listed
 
 
 def test_removing_the_rule_revokes_open_sessions(client, oauth_on, monkeypatch, two_companies):
@@ -268,3 +270,47 @@ def test_domainguard_user_sees_status_page_with_own_scope(client, make_user, two
     _login(client, make_user, "g", Role.viewer, scopes=[{"company_id": two_companies["gt1"]}])
     page = client.get("/status/tracking")
     assert "gt1-track.com" in page.text and "adera-up.com" not in page.text
+
+
+# --- review fixes ----------------------------------------------------------------------
+
+
+def test_readding_a_rule_does_not_resurrect_old_sessions(
+    client, oauth_on, monkeypatch, two_companies
+):
+    _allow(two_companies["adera"])
+    _status_login(client, monkeypatch, "ex@adera.agency", "adera.agency")
+    assert "adera-up.com" in client.get("/status/tracking").text
+
+    async def revoke_and_readd():
+        async with SessionLocal() as s:
+            await t.delete_access_rule(s, email_domain="adera.agency", actor_id=None)
+        async with SessionLocal() as s:
+            await t.add_access_rule(
+                s, email_domain="adera.agency", company_id=two_companies["adera"], actor_id=None
+            )
+
+    _run(revoke_and_readd())
+    assert "Войти через Google" in client.get("/status/tracking").text  # must sign in again
+
+
+def test_failed_status_login_stays_on_the_status_page(client, oauth_on, two_companies):
+    _allow(two_companies["adera"])
+    client.get("/status/login/google", follow_redirects=False)
+    cb = client.get("/auth/google/callback?code=c&state=WRONG", follow_redirects=False)
+    assert cb.status_code == 401
+    assert "статус трекинг-доменов" in cb.text and "Не удалось войти через Google" in cb.text
+
+
+def test_internal_board_poll_after_logout_reloads_instead_of_swapping_login(client):
+    part = client.get("/tracking?partial=1", follow_redirects=False)
+    assert part.status_code == 401 and part.headers.get("HX-Refresh") == "true"
+    assert client.get("/tracking", follow_redirects=False).headers["location"] == "/login"
+
+
+def test_domainguard_user_on_status_page_gets_a_way_back_not_a_fake_logout(
+    client, make_user, two_companies
+):
+    _login(client, make_user, "g", Role.viewer, scopes=[{"company_id": two_companies["gt1"]}])
+    page = client.get("/status/tracking").text
+    assert "← в DomainGuard" in page and 'action="/status/logout"' not in page

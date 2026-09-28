@@ -1,7 +1,7 @@
 {# Tracking board — shared by /tracking (internal) and /status/tracking (public).
    Inputs: board, public (bool), can_manage (bool). Rendered standalone for HTMX refresh. #}
-{%- set st_color = {"up": "var(--ok)", "down": "var(--mag)", "degraded": "var(--amber)", "unknown": "var(--dim)", "nocheck": "var(--faint)"} -%}
-{%- set st_glyph = {"up": "✔", "down": "✖", "degraded": "◆", "unknown": "…", "nocheck": "·"} -%}
+{%- set st_color = {"up": "var(--ok)", "down": "var(--mag)", "degraded": "var(--amber)", "stale": "var(--amber)", "unknown": "var(--dim)", "nocheck": "var(--faint)"} -%}
+{%- set st_glyph = {"up": "✔", "down": "✖", "degraded": "◆", "stale": "⌛", "unknown": "…", "nocheck": "·"} -%}
 {%- macro uptime(v) -%}
   {%- if v is none -%}<span style="color:var(--faint)">—</span>
   {%- else -%}<span style="color:{{ 'var(--ok)' if v >= 99 else ('var(--amber)' if v >= 95 else 'var(--mag)') }}">{{ '%g' % v }}%</span>
@@ -14,6 +14,7 @@
       ("up", "✔ Работают", "var(--ok)"),
       ("down", "✖ Лежат", "var(--mag)"),
       ("degraded", "◆ Сбоят", "var(--amber)"),
+      ("stale", "⌛ Нет свежих данных", "var(--amber)"),
       ("nocheck", "· Без проверки", "var(--dim)"),
       ("vt", "🚨 VirusTotal", "var(--mag)"),
       ("expiring", "⏳ Истекают ≤30 дн", "var(--amber)"),

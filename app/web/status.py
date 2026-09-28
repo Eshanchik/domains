@@ -43,8 +43,8 @@ def _is_secure() -> bool:
 
 async def _viewer(
     request: Request, session: AsyncSession, redis: aioredis.Redis, user: User | None
-) -> tuple[str, set[int] | None] | None:
-    """(who, allowed project ids) for this request, or None if not signed in."""
+) -> tuple[str, set[int] | None, bool] | None:
+    """(who, allowed project ids, via status session) or None if not signed in."""
     token = request.cookies.get(STATUS_COOKIE, "")
     if token:
         raw = await redis.get(_PREFIX + token)
@@ -52,10 +52,12 @@ async def _viewer(
             data = json.loads(raw)
             rules = await svc.get_access_rules(session)
             rule = next((r for r in rules if r.email_domain == data.get("email_domain")), None)
-            if rule is not None:  # the rule may have been removed since sign-in
-                return data["email"], await svc.scope_for_rule(session, rule)
+            # The rule may have been removed — or removed and re-added (a new generation),
+            # which voids every session issued before it.
+            if rule is not None and rule.accepts_session(data.get("issued_at")):
+                return data["email"], await svc.scope_for_rule(session, rule), True
     if user is not None:
-        return user.login, await domains_svc.allowed_project_ids(session, user)
+        return user.login, await domains_svc.allowed_project_ids(session, user), False
     return None
 
 
@@ -86,9 +88,16 @@ async def status_tracking(
         if partial:  # the auto-refresh of an expired session: tell HTMX to reload
             return HTMLResponse("", status_code=401, headers={"HX-Refresh": "true"})
         return _login_page(request)
-    who, allowed = viewer
+    who, allowed, via_status = viewer
     board = await svc.build_board(session, allowed=allowed)
-    ctx = {"board": board, "public": True, "can_manage": False, "who": who, "wide": True}
+    ctx = {
+        "board": board,
+        "public": True,
+        "can_manage": False,
+        "who": who,
+        "via_status": via_status,
+        "wide": True,
+    }
     if partial:
         return templates.TemplateResponse(request, "tracking/_board.html", ctx)
     return templates.TemplateResponse(request, "status/tracking.html", ctx)
@@ -114,6 +123,16 @@ async def status_login_google(request: Request, session: AsyncSession = Depends(
     return response
 
 
+def status_login_error(request: Request, message: str, *, code: int) -> HTMLResponse:
+    """Status-page login page with an error; clears the OAuth state/purpose cookies."""
+    from app.web.oauth import STATE_COOKIE
+
+    response = _login_page(request, error=message, code=code)
+    response.delete_cookie(STATE_COOKIE)
+    response.delete_cookie(PURPOSE_COOKIE)
+    return response
+
+
 async def complete_google_login(
     request: Request,
     session: AsyncSession,
@@ -126,38 +145,39 @@ async def complete_google_login(
     rules = await svc.get_access_rules(session)
     rule = svc.match_access(rules, identity.email, identity.hd) if identity.email_verified else None
     if rule is None:
-        domains = ", ".join(f"@{r.email_domain}" for r in rules) or "—"
-        response = _login_page(
+        # Never list the configured domains: they may be other companies' tenants.
+        return status_login_error(
             request,
-            error=f"Доступ только для рабочих Google-аккаунтов {domains}. "
-            f"Вы вошли как {identity.email}.",
+            f"Аккаунт {identity.email} не имеет доступа к этой странице. "
+            "Войдите рабочим Google-аккаунтом компании.",
             code=403,
         )
-    else:
-        token = secrets.token_urlsafe(32)
-        await redis.set(
-            _PREFIX + token,
-            json.dumps({"email": identity.email, "email_domain": rule.email_domain}),
-            ex=STATUS_TTL_SECONDS,
-        )
-        await record_audit(
-            session,
-            actor_id=None,
-            action="status_login",
-            entity_type="status_page",
-            diff={"email": identity.email},
-        )
-        await session.commit()
-        response = RedirectResponse("/status/tracking", status_code=status.HTTP_303_SEE_OTHER)
-        response.set_cookie(
-            STATUS_COOKIE,
-            token,
-            max_age=STATUS_TTL_SECONDS,
-            httponly=True,
-            secure=_is_secure(),
-            samesite="lax",
-            path="/status",
-        )
+    token = secrets.token_urlsafe(32)
+    await redis.set(
+        _PREFIX + token,
+        json.dumps(
+            {"email": identity.email, "email_domain": rule.email_domain, "issued_at": svc.stamp()}
+        ),
+        ex=STATUS_TTL_SECONDS,
+    )
+    await record_audit(
+        session,
+        actor_id=None,
+        action="status_login",
+        entity_type="status_page",
+        diff={"email": identity.email},
+    )
+    await session.commit()
+    response = RedirectResponse("/status/tracking", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(
+        STATUS_COOKIE,
+        token,
+        max_age=STATUS_TTL_SECONDS,
+        httponly=True,
+        secure=_is_secure(),
+        samesite="lax",
+        path="/status",
+    )
     response.delete_cookie(STATE_COOKIE)
     response.delete_cookie(PURPOSE_COOKIE)
     return response

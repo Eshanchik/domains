@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_session
-from app.deps import require_role, require_user
+from app.deps import NotAuthenticated, current_user_optional, require_role
 from app.models.user import Role, User
 from app.services import companies as companies_svc
 from app.services import domains as domains_svc
@@ -80,6 +80,7 @@ async def _page(
             "msg": msg,
             "rules": rules,
             "google_enabled": settings.google_oauth_enabled,
+            "status_url": f"{(settings.public_base_url or '').rstrip('/')}/status/tracking",
         },
         status_code=status_code,
     )
@@ -95,8 +96,12 @@ async def tracking_page(
     partial: str | None = None,
     msg: str | None = None,
     session: AsyncSession = Depends(get_session),
-    user: User = Depends(require_user),
+    user: User | None = Depends(current_user_optional),
 ) -> HTMLResponse:
+    if user is None:
+        if partial:  # expired session during auto-refresh: reload the page → /login
+            return HTMLResponse("", status_code=401, headers={"HX-Refresh": "true"})
+        raise NotAuthenticated
     cid, pid = _int_or_none(company_id), _int_or_none(project_id)
     st = status if status in svc.STATUS_ORDER else None
     if partial:
