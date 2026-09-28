@@ -111,9 +111,11 @@ def test_alert_notify_sends_to_channels(
     _make_channel(is_default=True, mode="instant")
 
     sent: list[str] = []
+    logged_for: list[int | None] = []
 
-    async def fake_send(session, redis, channel, text):
+    async def fake_send(session, redis, channel, text, alert_event_id=None):
         sent.append(text)
+        logged_for.append(alert_event_id)
         return True
 
     monkeypatch.setattr(notif, "send_to_channel", fake_send)
@@ -121,3 +123,7 @@ def test_alert_notify_sends_to_channels(
     assert resp.status_code == 303
     assert resp.headers["location"] == f"/alerts/{aid}?notified=1"
     assert sent and "al.com" in sent[0]
+    # T97: the resend is logged against the alert (shows in the card's «Доставка»)
+    # and links back to the card.
+    assert logged_for == [aid]
+    assert f"/alerts/{aid}" in sent[0]
