@@ -283,6 +283,7 @@
           ("/", "grid", "Обзор", ["admin","manager","viewer"], true),
           ("/domains", "globe", "Домены", ["admin","manager","viewer"], false),
           ("/alerts", "bell", "Алерты", ["admin","manager","viewer"], false),
+          ("/tracking", "activity", "Трекинг", ["admin","manager","viewer"], false),
           ("/costs", "cash", "Расходы", ["admin","manager","viewer"], false),
           ("/import", "upload", "Импорт", ["admin","manager"], false),
         ]),
@@ -362,8 +363,10 @@
       {# Unauthenticated shell (login): matrix rain behind the login box (login.html
          draws its own full ╭─ … ─╮ terminal frame). #}
       <div class="relative flex min-h-full flex-col items-center justify-center px-4 py-12" style="overflow:hidden">
-        <canvas id="dg-matrix" class="pointer-events-none absolute inset-0 h-full w-full" style="opacity:.4;z-index:0"></canvas>
-        <div class="relative w-full" style="max-width:580px;z-index:1">
+        {# `wide` pages (the public status board) need room for a table; the rain stays subtle. #}
+        {% set wide_page = wide | default(false) %}
+        <canvas id="dg-matrix" class="pointer-events-none absolute inset-0 h-full w-full" style="opacity:{{ '.12' if wide_page else '.4' }};z-index:0"></canvas>
+        <div class="relative w-full" style="max-width:{{ '1240px' if wide_page else '580px' }};z-index:1">
           {{ self.content() }}
         </div>
       </div>

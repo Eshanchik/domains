@@ -57,3 +57,23 @@ def test_exchange_code_no_access_token_raises() -> None:
     respx.post(TOKEN_ENDPOINT).mock(return_value=httpx.Response(200, json={}))
     with pytest.raises(OAuthError):
         asyncio.run(google_oauth.exchange_code("code", "https://d/cb"))
+
+
+def test_build_authorize_url_passes_hosted_domain_hint() -> None:
+    url = google_oauth.build_authorize_url(
+        state="S", redirect_uri="https://d/cb", hd="adera.agency"
+    )
+    assert "hd=adera.agency" in url
+    assert "hd=" not in google_oauth.build_authorize_url(state="S", redirect_uri="https://d/cb")
+
+
+@respx.mock
+def test_exchange_code_returns_workspace_hosted_domain() -> None:
+    respx.post(TOKEN_ENDPOINT).mock(return_value=httpx.Response(200, json={"access_token": "AT"}))
+    respx.get(USERINFO_ENDPOINT).mock(
+        return_value=httpx.Response(
+            200, json={"email": "ivan@adera.agency", "email_verified": True, "hd": "Adera.Agency"}
+        )
+    )
+    ident = asyncio.run(google_oauth.exchange_code("code", "https://d/cb"))
+    assert ident.hd == "adera.agency"

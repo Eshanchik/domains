@@ -93,6 +93,8 @@ async def google_login(request: Request):
         secure=_is_secure(),
         samesite="lax",
     )
+    # A leftover status-page purpose (abandoned /status login) must not reroute this.
+    response.delete_cookie("dg_oauth_purpose")
     return response
 
 
@@ -122,6 +124,13 @@ async def google_callback(
         identity = await google_oauth.exchange_code(code, _redirect_uri(request))
     except google_oauth.OAuthError:
         return _login_error(request, "Не удалось войти через Google. Повторите попытку.")
+
+    if request.cookies.get("dg_oauth_purpose") == "status":
+        # Status-page sign-in (T99): its own access rules and session — never a
+        # DomainGuard login, whatever accounts exist for this e-mail.
+        from app.web.status import complete_google_login
+
+        return await complete_google_login(request, session, redis, identity)
 
     if not identity.email_verified:
         return _login_error(request, "Google-аккаунт с неподтверждённым email не допускается.")

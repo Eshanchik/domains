@@ -28,7 +28,9 @@ from app.web import oauth_consent as web_oauth_consent
 from app.web import payments as web_payments
 from app.web import people as web_people
 from app.web import registrars as web_registrars
+from app.web import status as web_status
 from app.web import tokens as web_tokens
+from app.web import tracking as web_tracking
 from app.web import twofa as web_twofa
 from app.web import users as web_users
 from app.web import webhooks as web_webhooks
@@ -64,6 +66,8 @@ def create_app() -> FastAPI:
     app.include_router(web_healthchecks.router)
     app.include_router(web_channels.router)
     app.include_router(web_people.router)
+    app.include_router(web_tracking.router)
+    app.include_router(web_status.router)
     app.include_router(web_alerts.router)
     app.include_router(web_payments.router)
     app.include_router(web_registrars.router)

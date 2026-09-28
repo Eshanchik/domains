@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% import "_components.html" as ui %}
+{% block title %}Трекинг доменов — DomainGuard{% endblock %}
+{% block content %}
+<div class="mb-4 flex flex-wrap items-baseline gap-3">
+  <h1 class="page-title">ТРЕКИНГ ДОМЕНОВ</h1>
+  <span class="text-xs" style="color:var(--dim)">// живы ли трекер-ссылки, как давно лежат, аптайм, VT/SSL/DNS · домены с тегом «tracking»</span>
+</div>
+
+{% if error %}<div class="mb-4">{{ ui.flash(error) }}</div>{% endif %}
+{% if msg and msg.startswith("recheck") %}
+  {% set n = msg[7:] %}
+  {% if n and n != "0" %}<div class="flash flash-success mb-4">Проверки поставлены в очередь ({{ n }}) — результат появится в течение минуты.</div>
+  {% else %}<div class="flash mb-4">У домена нет включённых health-check'ов — проверять нечего.</div>{% endif %}
+{% elif msg == "removed" %}<div class="flash flash-success mb-4">Домен убран из трекинга.</div>
+{% elif msg == "access" %}<div class="flash flash-success mb-4">Правило доступа сохранено.</div>
+{% endif %}
+
+{% if report %}
+<div class="flash flash-success mb-4">
+  Добавлено в трекинг: {{ report.added | length }}{% if report.added %} ({{ report.added | join(", ") }}){% endif %}.
+  Новых проверок: {{ report.checks_created }}.
+  {% if report.already %}<br>Уже были в трекинге: {{ report.already | join(", ") }}.{% endif %}
+  {% if report.missing %}<br><span style="color:var(--amber)">Нет в реестре (сначала добавьте домен): {{ report.missing | join(", ") }}.</span>{% endif %}
+  {% if report.forbidden %}<br><span style="color:var(--amber)">Нет доступа: {{ report.forbidden | join(", ") }}.</span>{% endif %}
+  {% if report.invalid %}<br><span style="color:var(--amber)">Не похоже на домен: {{ report.invalid | join(", ") }}.</span>{% endif %}
+</div>
+{% endif %}
+
+<form method="get" action="/tracking" class="mb-3 flex flex-wrap items-end gap-2 text-sm">
+  <select name="company_id" class="select w-auto" onchange="this.form.requestSubmit()">
+    <option value="">Все компании</option>
+    {% for c in companies %}<option value="{{ c.id }}" {{ 'selected' if f.company_id == c.id else '' }}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <select name="project_id" class="select w-auto" onchange="this.form.requestSubmit()">
+    <option value="">Все проекты</option>
+    {% for p in projects %}<option value="{{ p.id }}" {{ 'selected' if f.project_id == p.id else '' }}>{{ p.name }}</option>{% endfor %}
+  </select>
+  <select name="status" class="select w-auto" onchange="this.form.requestSubmit()">
+    <option value="">Любой статус</option>
+    {% for key, label in statuses.items() %}<option value="{{ key }}" {{ 'selected' if f.status == key else '' }}>{{ label }}</option>{% endfor %}
+  </select>
+  <input name="q" value="{{ f.q or '' }}" placeholder="поиск по домену" class="input w-auto" />
+  <button type="submit" class="btn btn-secondary btn-sm">Найти</button>
+  {% if f.company_id or f.project_id or f.status or f.q %}<a href="/tracking" class="btn btn-ghost btn-sm">Сбросить</a>{% endif %}
+</form>
+
+{% set qs = "partial=1" ~ ("&company_id=" ~ f.company_id if f.company_id else "") ~ ("&project_id=" ~ f.project_id if f.project_id else "") ~ ("&status=" ~ f.status if f.status else "") ~ ("&q=" ~ (f.q | urlencode) if f.q else "") %}
+<div hx-get="/tracking?{{ qs }}" hx-trigger="every 60s" hx-swap="innerHTML" class="mb-6">
+  {% include "tracking/_board.html" %}
+</div>
+
+{% if can_manage %}
+{% call ui.panel("Добавить в трекинг") %}
+<form method="post" action="/tracking/add" class="grid grid-cols-1 gap-4 md:grid-cols-2" style="padding:16px 18px">
+  <p class="md:col-span-2 text-xs muted">
+    Домены должны уже быть в реестре. Каждому ставится тег «tracking» и создаётся health-check по шаблону
+    (<code>{fqdn}</code> заменяется на домен). Повторное добавление ничего не дублирует.
+  </p>
+  <div class="md:row-span-3">
+    <label class="label" for="t_fqdns">Домены (по одному в строке)</label>
+    <textarea id="t_fqdns" name="fqdns" rows="7" class="input input-mono" placeholder="tracker1.com&#10;tracker2.net">{{ form.fqdns or '' }}</textarea>
+  </div>
+  <div>
+    <label class="label" for="t_url">Шаблон URL трекер-ссылки</label>
+    <input id="t_url" name="url_template" value="{{ template_url }}" class="input input-mono" />
+  </div>
+  <div>
+    <label class="label" for="t_exp">Ожидаемые коды ответа</label>
+    <input id="t_exp" name="expected_statuses" value="{{ form.expected_statuses or '200-399' }}" class="input input-mono" />
+    <p class="mt-1 text-xs muted">200-399 — редирект на оффер считается «работает».</p>
+  </div>
+  <label class="flex items-center gap-2 text-sm">
+    <input type="checkbox" name="follow_redirects" value="1" class="checkbox" {{ 'checked' if form.follow_redirects else '' }} />
+    Следовать за редиректами (проверять конечную страницу оффера)
+  </label>
+  <div class="md:col-span-2"><button type="submit" class="btn btn-primary">Добавить в трекинг</button></div>
+</form>
+{% endcall %}
+{% endif %}
+
+{% if is_admin %}
+<div id="access"></div>
+{% call ui.panel("Страница статуса для сотрудников") %}
+<div style="padding:12px 18px 0" class="space-y-2 text-sm">
+  <p>Ссылка: <a href="/status/tracking" class="link font-mono" target="_blank" rel="noopener">{{ request.base_url }}status/tracking</a>
+    — только список трекеров и их состояние, без доступа к остальному DomainGuard.</p>
+  <p class="text-xs muted">Вход — рабочим Google-аккаунтом: домен почты должен совпасть с правилом, и аккаунт должен
+    принадлежать Google Workspace этого домена (личный Google на рабочий адрес не пустит). Сессия — 12 часов.</p>
+  {% if not google_enabled %}
+  <div class="flash">Вход через Google пока не настроен — задайте <code>GOOGLE_CLIENT_ID</code> и <code>GOOGLE_CLIENT_SECRET</code> (инструкция в docs/DEPLOY.md).</div>
+  {% endif %}
+</div>
+<table class="dg-table">
+  <thead><tr><th>Домен почты</th><th>Какие трекеры видны</th><th></th></tr></thead>
+  <tbody>
+    {% for r in rules %}
+    <tr>
+      <td class="font-mono">@{{ r.email_domain }}</td>
+      <td>{{ company_names.get(r.company_id, "компания #" ~ r.company_id) if r.company_id else "все компании" }}</td>
+      <td>
+        <form method="post" action="/tracking/access/delete" class="inline"
+              data-confirm="Закрыть доступ для @{{ r.email_domain }}? Открытые сессии перестанут работать сразу."
+              onsubmit="return confirm(this.dataset.confirm);">
+          <input type="hidden" name="email_domain" value="{{ r.email_domain }}" />
+          <button class="btn-link-danger">Закрыть доступ</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    {{ ui.empty_row(3, "Доступ никому не открыт.") }}
+    {% endfor %}
+  </tbody>
+</table>
+<form method="post" action="/tracking/access" class="flex flex-wrap items-end gap-3" style="padding:16px 18px">
+  <div>
+    <label class="label" for="a_domain">Домен почты</label>
+    <input id="a_domain" name="email_domain" required placeholder="adera.agency" class="input input-mono" />
+  </div>
+  <div>
+    <label class="label" for="a_company">Показывать трекеры</label>
+    <select id="a_company" name="company_id" class="select">
+      {% for c in companies %}<option value="{{ c.id }}">компании {{ c.name }}</option>{% endfor %}
+      <option value="">всех компаний</option>
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary">Открыть доступ</button>
+</form>
+{% endcall %}
+{% endif %}
+{% endblock %}

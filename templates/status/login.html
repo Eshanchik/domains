@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Вход — статус трекинг-доменов{% endblock %}
+{% block content %}
+<div style="background:rgba(16,21,31,.86);box-shadow:0 0 44px rgba(0,0,0,.6)">
+  <div class="flex items-center gap-1.5 px-3 py-2 text-xs" style="color:var(--cyan)">
+    <span>╭─</span>
+    <span class="font-bold tracking-wide" style="color:var(--tx)">DOMAINGUARD // статус трекинг-доменов</span>
+    <span class="flex-1 overflow-hidden whitespace-nowrap">──────────────────────────────</span>
+    <span>╮</span>
+  </div>
+  <div class="px-6 py-5 space-y-4">
+    {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+    <p class="text-sm" style="color:var(--tx)">
+      Здесь видно, работают ли трекинг-домены компании: какие лежат и как давно, аптайм, проблемы с SSL, DNS и VirusTotal.
+    </p>
+    <p class="text-xs" style="color:var(--dim)">Вход — рабочим Google-аккаунтом компании. Отдельная учётка не нужна.</p>
+    {% if google_enabled %}
+      <a href="/status/login/google" class="btn btn-primary">Войти через Google</a>
+    {% else %}
+      <div class="flash">Вход через Google ещё не настроен — обратитесь к администратору DomainGuard.</div>
+    {% endif %}
+  </div>
+  <div class="flex items-center gap-1.5 px-3 pb-2 text-xs" style="color:var(--cyan)"><span>╰</span><span class="flex-1 overflow-hidden whitespace-nowrap">──────────────────────────────────────────────</span><span>╯</span></div>
+</div>
+{% endblock %}
