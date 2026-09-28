@@ -304,14 +304,28 @@ async def ssl_status_map(
     from app.models.ssl_certificate import SslCertificate
 
     ts = now or datetime.now(UTC)
+    # Newest row per domain via row_number() — portable across SQLAlchemy 2.0/2.1
+    # (2.1 deprecates `.distinct(expr)` for DISTINCT ON). Ties on checked_at (all hosts
+    # of one run share it) are broken by id so the choice is deterministic.
+    ranked = (
+        select(
+            SslCertificate.id,
+            func.row_number()
+            .over(
+                partition_by=SslCertificate.domain_id,
+                order_by=(SslCertificate.checked_at.desc(), SslCertificate.id.desc()),
+            )
+            .label("rn"),
+        )
+        .where(SslCertificate.domain_id.in_(domain_ids))
+        .subquery()
+    )
     rows = (
         (
             await session.execute(
-                # DISTINCT ON (domain_id) ordered by newest → one latest row per domain.
                 select(SslCertificate)
-                .where(SslCertificate.domain_id.in_(domain_ids))
-                .order_by(SslCertificate.domain_id, SslCertificate.checked_at.desc())
-                .distinct(SslCertificate.domain_id)
+                .join(ranked, ranked.c.id == SslCertificate.id)
+                .where(ranked.c.rn == 1)
             )
         )
         .scalars()
