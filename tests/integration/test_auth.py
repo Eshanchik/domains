@@ -164,3 +164,88 @@ def test_admin_toggles_mcp_allowed(client, make_user) -> None:
         follow_redirects=False,
     )
     assert _run(_get()).mcp_allowed is False
+
+
+# --- T100: login by e-mail -----------------------------------------------------------
+
+
+def _post_login(client, ident, password="password123", **extra):
+    return client.post(
+        "/login", data={"login": ident, "password": password, **extra}, follow_redirects=False
+    )
+
+
+def test_login_by_email_or_login_in_any_case(client, make_user) -> None:
+    make_user(login="Eshanchik", password="password123", email="Aleksandr.Y@gmail.com")
+    for ident in (
+        "Eshanchik",
+        "eshanchik",
+        " ESHANCHIK ",
+        "aleksandr.y@gmail.com",
+        "ALEKSANDR.Y@Gmail.com",
+    ):
+        client.cookies.clear()
+        resp = _post_login(client, ident)
+        assert resp.status_code == 303, ident
+        assert "dg_session" in resp.cookies
+    client.cookies.clear()  # logged-in users are redirected away from /login
+    assert "логин или почта" in client.get("/login").text  # the form says so
+
+
+def test_exact_login_wins_over_someone_elses_email(client, make_user) -> None:
+    make_user(login="shared@corp.com", password="password123", email="first@corp.com")
+    make_user(login="second", password="other-pass-1", email="shared@corp.com")
+    assert _post_login(client, "shared@corp.com").status_code == 303  # the login owner
+    client.cookies.clear()
+    assert _post_login(client, "shared@corp.com", "other-pass-1").status_code == 401
+
+
+def test_ambiguous_case_insensitive_login_is_refused(client, make_user) -> None:
+    make_user(login="Dup", password="password123", email="dup1@corp.com")
+    make_user(login="dup", password="password123", email="dup2@corp.com")
+    assert _post_login(client, "DUP").status_code == 401  # never guess between two people
+    assert _post_login(client, "Dup").status_code == 303  # an exact login still works
+
+
+def test_lockout_is_shared_between_login_and_email(client, make_user) -> None:
+    make_user(login="erin", password="password123", email="erin@corp.com")
+    for i in range(login_guard.MAX_ATTEMPTS):
+        _post_login(client, "erin" if i % 2 else "erin@corp.com", "nope")
+    for ident in ("erin", "ERIN@corp.com"):
+        locked = _post_login(client, ident)
+        assert locked.status_code == 401 and "Слишком много" in locked.text
+
+
+def test_inactive_user_cannot_log_in_by_email(client, make_user) -> None:
+    u = make_user(login="gone", password="password123", email="gone@corp.com")
+
+    async def deactivate():
+        async with SessionLocal() as s:
+            (await s.get(User, u["id"])).is_active = False
+            await s.commit()
+
+    asyncio.run(deactivate())
+    assert _post_login(client, "gone@corp.com").status_code != 303
+
+
+def test_two_factor_still_required_when_logging_in_by_email(client, make_user) -> None:
+    import pyotp
+
+    from app.core import crypto
+
+    u = make_user(login="frank", password="password123", email="frank@corp.com")
+    secret = pyotp.random_base32()
+
+    async def enable_2fa():
+        async with SessionLocal() as s:
+            user = await s.get(User, u["id"])
+            user.totp_secret_enc = crypto.encrypt(secret)
+            user.totp_enabled = True
+            await s.commit()
+
+    asyncio.run(enable_2fa())
+    step1 = _post_login(client, "frank@corp.com")
+    assert step1.status_code == 401 and 'name="code"' in step1.text  # code field shown
+    assert _post_login(client, "frank@corp.com", code="000000").status_code == 401
+    ok = _post_login(client, "frank@corp.com", code=pyotp.TOTP(secret).now())
+    assert ok.status_code == 303 and "dg_session" in ok.cookies

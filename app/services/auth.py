@@ -10,7 +10,7 @@ import enum
 from dataclasses import dataclass
 
 import redis.asyncio as aioredis
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import login_guard
@@ -47,6 +47,35 @@ async def get_user_by_login(session: AsyncSession, login: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def find_user_for_login(session: AsyncSession, identifier: str) -> User | None:
+    """Resolve what someone typed into the login form: their login or their e-mail.
+
+    Order: exact login → login ignoring case → e-mail ignoring case. A case-insensitive
+    match that hits more than one account is refused (never guess between two people).
+    """
+    ident = (identifier or "").strip()
+    if not ident:
+        return None
+    exact = await get_user_by_login(session, ident)
+    if exact is not None:
+        return exact
+    for column in (User.login, User.email):
+        rows = list(
+            (
+                await session.execute(
+                    select(User).where(func.lower(column) == ident.lower()).limit(2)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if len(rows) == 1:
+            return rows[0]
+        if len(rows) > 1:
+            return None
+    return None
+
+
 async def list_users(session: AsyncSession) -> list[User]:
     result = await session.execute(select(User).order_by(User.id))
     return list(result.scalars().all())
@@ -65,10 +94,13 @@ async def authenticate(
     render a generic message (never reveal which factor failed). If the user has 2FA
     enabled, a valid TOTP ``code`` is also required.
     """
-    if await login_guard.is_locked(redis, login):
+    user = await find_user_for_login(session, login)
+    # Brute-force counter per ACCOUNT (not per typed string), so alternating the login
+    # and the e-mail of the same person shares one counter.
+    guard_key = user.login if user is not None else (login or "").strip()
+    if await login_guard.is_locked(redis, guard_key):
         return AuthResult(error=AuthError.locked)
 
-    user = await get_user_by_login(session, login)
     # Always run a verify to keep timing roughly constant even for unknown logins.
     stored_hash = (
         user.password_hash
@@ -81,7 +113,7 @@ async def authenticate(
     password_ok = verify_password(password, stored_hash)
 
     if user is None or not password_ok:
-        count = await login_guard.record_failure(redis, login)
+        count = await login_guard.record_failure(redis, guard_key)
         error = AuthError.locked if count >= login_guard.MAX_ATTEMPTS else AuthError.invalid
         return AuthResult(error=error)
 
@@ -95,11 +127,11 @@ async def authenticate(
         if not code:
             return AuthResult(error=AuthError.totp_required)  # step 1: prompt for code
         if not twofa.verify(twofa.user_secret(user) or "", code):
-            await login_guard.record_failure(redis, login)  # deter code brute-force
+            await login_guard.record_failure(redis, guard_key)  # deter code brute-force
             return AuthResult(error=AuthError.totp_invalid)
 
     # Successful login: clear counter and opportunistically upgrade the hash.
-    await login_guard.reset(redis, login)
+    await login_guard.reset(redis, guard_key)
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(password)
         await session.commit()
