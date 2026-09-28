@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,14 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.deps import redis_dep, require_role, require_user
 from app.models.alert import AlertEvent
-from app.models.check_result import CheckResult
 from app.models.company import Company, Project
 from app.models.domain import Domain
+from app.models.person import Person
 from app.models.user import Role, User
+from app.services import alert_workflow as workflow
 from app.services import alerts as alerts_svc
 from app.services import companies as companies_svc
 from app.services import domains as domains_svc
 from app.services import notifications as notif
+from app.services import people as people_svc
 from app.templating import templates
 
 router = APIRouter(tags=["web-alerts"])
@@ -59,6 +61,7 @@ async def alerts_list(
     project_id: str | None = None,
     severity: str | None = None,
     kind: str | None = None,
+    owner: str | None = None,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_user),
 ) -> HTMLResponse:
@@ -66,12 +69,14 @@ async def alerts_list(
     project_id = _int_or_none(project_id)
     severity = severity or None
     kind = kind or None
+    owner = owner or None
     allowed = await domains_svc.allowed_project_ids(session, user)
     stmt = (
-        select(AlertEvent, Domain.fqdn, Project.name, Company.name)
+        select(AlertEvent, Domain.fqdn, Project.name, Company.name, Person)
         .join(Domain, Domain.id == AlertEvent.domain_id)
         .join(Project, Project.id == Domain.project_id)
         .join(Company, Company.id == Project.company_id)
+        .outerjoin(Person, Person.id == AlertEvent.assignee_person_id)
         .where(AlertEvent.state == "active", Domain.is_active.is_(True))
         .order_by(AlertEvent.fired_at.desc())
     )
@@ -89,6 +94,13 @@ async def alerts_list(
         stmt = stmt.where(AlertEvent.severity == severity)
     if kind in ALERT_KINDS:
         stmt = stmt.where(AlertEvent.kind == kind)
+    me = await people_svc.person_for_user(session, user.id)
+    if owner == "none":
+        stmt = stmt.where(AlertEvent.assignee_person_id.is_(None))
+    elif owner == "me":
+        stmt = stmt.where(AlertEvent.assignee_person_id == (me.id if me is not None else -1))
+    elif _int_or_none(owner) is not None:
+        stmt = stmt.where(AlertEvent.assignee_person_id == _int_or_none(owner))
     raw = (await session.execute(stmt)).all()
     now = datetime.now(UTC)
     rows = [
@@ -97,9 +109,10 @@ async def alerts_list(
             "fqdn": fqdn,
             "project": project,
             "company": company,
+            "owner": person,
             "age": format_age(now - event.fired_at),
         }
-        for event, fqdn, project, company in raw
+        for event, fqdn, project, company, person in raw
     ]
     return templates.TemplateResponse(
         request,
@@ -111,11 +124,14 @@ async def alerts_list(
             "projects": await companies_svc.list_projects(session, user),
             "kinds": ALERT_KINDS,
             "severities": ALERT_SEVERITIES,
+            "people": await people_svc.list_people(session, active_only=True),
+            "me": me,
             "f": {
                 "company_id": company_id,
                 "project_id": project_id,
                 "severity": severity,
                 "kind": kind,
+                "owner": owner,
             },
         },
     )
@@ -142,6 +158,8 @@ async def alert_detail(
     request: Request,
     alert_id: int,
     notified: str | None = None,
+    msg: str | None = None,
+    sent: str | None = None,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(require_user),
 ) -> HTMLResponse:
@@ -149,41 +167,120 @@ async def alert_detail(
     if found is None:
         return RedirectResponse("/alerts", status_code=status.HTTP_303_SEE_OTHER)
     event, domain = found
-    recent_checks = list(
-        (
-            await session.execute(
-                select(CheckResult)
-                .where(CheckResult.domain_id == domain.id)
-                .order_by(CheckResult.checked_at.desc())
-                .limit(10)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    card = await workflow.build_card(session, event, domain)
     return templates.TemplateResponse(
         request,
         "alerts/detail.html",
         {
+            **card,
             "user": user,
-            "event": event,
-            "domain": domain,
-            "recent_checks": recent_checks,
+            "can_act": user.role in (Role.admin, Role.manager),
             "notified": notified,
+            "msg": msg,
+            "sent": _int_or_none(sent),
         },
     )
+
+
+def _deliver(session: AsyncSession, redis, event_id: int) -> workflow.Deliver:
+    """Send synchronously from the api (it has egress); logged against the alert."""
+
+    async def deliver(channel, text: str) -> bool:
+        return await notif.send_to_channel(session, redis, channel, text, alert_event_id=event_id)
+
+    return deliver
+
+
+def _back(alert_id: int, msg: str, sent: int | None = None) -> RedirectResponse:
+    q = f"?msg={msg}" + (f"&sent={sent}" if sent is not None else "")
+    return RedirectResponse(f"/alerts/{alert_id}{q}", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/alerts/{alert_id}/resolve")
 async def alert_resolve(
     alert_id: int,
+    note: str = Form(""),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(manager_required),
 ):
     found = await _load_alert_in_scope(session, user, alert_id)
     if found is not None:
-        await alerts_svc.resolve_event(session, alert_id)
+        await alerts_svc.resolve_event(session, alert_id, actor_id=user.id, note=note)
     return RedirectResponse(f"/alerts/{alert_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/alerts/{alert_id}/assign")
+async def alert_assign(
+    alert_id: int,
+    person_id: str = Form(""),
+    notify: str | None = Form(None),
+    session: AsyncSession = Depends(get_session),
+    redis=Depends(redis_dep),
+    user: User = Depends(manager_required),
+):
+    """Set/clear the owner; optionally ping them in the domain's channels (Manager+)."""
+    found = await _load_alert_in_scope(session, user, alert_id)
+    if found is None:
+        return RedirectResponse("/alerts", status_code=status.HTTP_303_SEE_OTHER)
+    event, domain = found
+    try:
+        sent = await workflow.assign(
+            session,
+            event,
+            domain,
+            _int_or_none(person_id),
+            actor=user,
+            notify=notify is not None,
+            deliver=_deliver(session, redis, event.id),
+        )
+    except people_svc.PersonError:
+        return _back(alert_id, "bad_person")
+    return _back(alert_id, "assigned", len(sent))
+
+
+@router.post("/alerts/{alert_id}/ack")
+async def alert_ack(
+    alert_id: int,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(manager_required),
+):
+    """«Взял в работу» (Manager+)."""
+    found = await _load_alert_in_scope(session, user, alert_id)
+    if found is None:
+        return RedirectResponse("/alerts", status_code=status.HTTP_303_SEE_OTHER)
+    event = found[0]
+    if await workflow.ack(session, event, actor=user):
+        return _back(alert_id, "acked")
+    return _back(alert_id, "already_acked" if event.state == "active" else "not_active")
+
+
+@router.post("/alerts/{alert_id}/comment")
+async def alert_comment(
+    alert_id: int,
+    body: str = Form(""),
+    to_channel: str | None = Form(None),
+    session: AsyncSession = Depends(get_session),
+    redis=Depends(redis_dep),
+    user: User = Depends(manager_required),
+):
+    """Add a comment with @mentions; optionally post it to the channels (Manager+)."""
+    found = await _load_alert_in_scope(session, user, alert_id)
+    if found is None:
+        return RedirectResponse("/alerts", status_code=status.HTTP_303_SEE_OTHER)
+    event, domain = found
+    try:
+        sent = await workflow.comment(
+            session,
+            event,
+            domain,
+            body,
+            actor=user,
+            to_channel=to_channel is not None,
+            deliver=_deliver(session, redis, event.id),
+        )
+    except people_svc.PersonError:
+        return _back(alert_id, "empty_comment")
+    return _back(alert_id, "commented", len(sent) if to_channel is not None else None)
 
 
 @router.post("/alerts/{alert_id}/notify")
@@ -200,11 +297,18 @@ async def alert_notify(
         event, domain = found
         project, company = await alerts_svc.domain_location(session, domain)
         account = await alerts_svc.account_label(session, domain)
-        text = alerts_svc.build_message(
-            event, domain, project=project, company=company, account=account
-        )
+        owner = await workflow.active_owner(session, event)
         for channel in await notif.resolve_channels(session, domain, purpose="instant"):
-            if await notif.send_to_channel(session, redis, channel, text):
+            text = alerts_svc.build_message(
+                event,
+                domain,
+                project=project,
+                company=company,
+                account=account,
+                mention=people_svc.mention(owner, channel.type) or None,
+                url=workflow.alert_url(event.id),
+            )
+            if await notif.send_to_channel(session, redis, channel, text, alert_event_id=event.id):
                 sent += 1
     return RedirectResponse(
         f"/alerts/{alert_id}?notified={sent}", status_code=status.HTTP_303_SEE_OTHER

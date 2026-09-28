@@ -5,7 +5,7 @@ Importing the model modules here ensures every table is registered on
 """
 
 from app.db import Base
-from app.models.alert import AlertEvent, AlertRule
+from app.models.alert import AlertActivity, AlertEvent, AlertRule
 from app.models.api import ApiToken, WebhookEndpoint
 from app.models.audit import AuditLog
 from app.models.check import CheckSchedule, CheckType
@@ -15,6 +15,7 @@ from app.models.domain import Domain, DomainFieldHistory, DomainTag
 from app.models.healthcheck import HealthCheck, HealthCheckResult
 from app.models.notification import NotificationChannel, NotificationLog
 from app.models.payment import Payment
+from app.models.person import AlertRoute, Person
 from app.models.registrar import Registrar, RegistrarAccount, UnassignedDomain
 from app.models.setting import Setting
 from app.models.ssl_certificate import SslCertificate
@@ -46,6 +47,9 @@ __all__ = [
     "NotificationLog",
     "AlertRule",
     "AlertEvent",
+    "AlertActivity",
+    "Person",
+    "AlertRoute",
     "Payment",
     "Registrar",
     "RegistrarAccount",

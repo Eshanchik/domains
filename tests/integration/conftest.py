@@ -49,7 +49,8 @@ def _clean_state():
                     "health_checks, health_check_results, notification_channels, "
                     "notification_log, alert_events, alert_rules, payments, "
                     "registrars, registrar_accounts, unassigned_domains, "
-                    "api_tokens, webhook_endpoints RESTART IDENTITY CASCADE"
+                    "api_tokens, webhook_endpoints, people, alert_routes, alert_activity "
+                    "RESTART IDENTITY CASCADE"
                 )
             )
         redis = get_redis()

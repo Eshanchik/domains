@@ -280,7 +280,7 @@ async def resolve_alert(session: AsyncSession, user: User, *, alert_id: int) -> 
     domain = await domains_svc.get_domain(session, event.domain_id)
     if domain is None or not await _visible(session, user, domain):
         raise ToolPermissionError("alert is out of your scope")
-    resolved = await alerts_svc.resolve_event(session, alert_id)
+    resolved = await alerts_svc.resolve_event(session, alert_id, actor_id=user.id)
     return {"id": alert_id, "resolved": resolved}
 
 

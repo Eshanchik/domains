@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% import "_components.html" as ui %}
+{% block title %}Люди — DomainGuard{% endblock %}
+{% block content %}
+{% if error %}<div class="mb-4">{{ ui.flash(error) }}</div>{% endif %}
+
+{% call ui.panel("Люди и группы (" ~ (people | length) ~ ")") %}
+<table class="dg-table">
+  <thead>
+    <tr><th>Имя</th><th>Ник</th><th>Discord</th><th>Telegram</th><th>Аккаунт DomainGuard</th><th>Статус</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for p in people %}
+    <tr>
+      <td>
+        {% if p.kind == "group" %}{{ ui.badge("группа", "blue") }} {% endif %}{{ p.name }}
+        {% if p.note %}<div class="text-xs muted">{{ p.note }}</div>{% endif %}
+      </td>
+      <td class="font-mono">@{{ p.handle }}</td>
+      <td class="font-mono">{% if p.discord_id %}{{ "<@&" if p.kind == "group" else "<@" }}{{ p.discord_id }}&gt;{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="font-mono">{% if p.telegram_username %}@{{ p.telegram_username }}{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{% set u = users | selectattr("id", "equalto", p.user_id) | first %}{{ u.login if u else "—" }}</td>
+      <td>{% if p.is_active %}{{ ui.badge("активен", "green") }}{% else %}{{ ui.badge("отключён", "gray") }}{% endif %}</td>
+      <td class="whitespace-nowrap">
+        <a href="/people/{{ p.id }}/edit" class="link">Изменить</a>
+        {# User data stays out of the JS source: the handler reads a data-attribute. #}
+        <form method="post" action="/people/{{ p.id }}/delete" class="inline"
+              data-confirm="Удалить {{ p.name }}? Его правила маршрутизации удалятся, алерты останутся без ответственного."
+              onsubmit="return confirm(this.dataset.confirm);">
+          <button class="btn-link-danger">Удалить</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    {{ ui.empty_row(7, "Пока никого нет. Добавьте людей ниже — потом их можно назначать на алерты и упоминать в комментариях.") }}
+    {% endfor %}
+  </tbody>
+</table>
+{% endcall %}
+
+{% call ui.panel("Добавить человека или группу") %}
+<form method="post" action="/people" class="grid grid-cols-1 gap-4 md:grid-cols-2" style="padding:16px 18px">
+  <p class="md:col-span-2 text-xs muted">
+    Человеку не нужен логин в DomainGuard. <strong>Discord ID</strong>: в Discord включите
+    «Режим разработчика» (Настройки → Расширенные), затем ПКМ по человеку → «Копировать ID».
+    Для <strong>группы</strong> (например @ops) укажите ID роли: Настройки сервера → Роли → ПКМ по роли → «Копировать ID».
+    В Telegram упоминание работает по @username, если человек состоит в чате.
+  </p>
+  <div>
+    <label class="label" for="p_kind">Тип</label>
+    <select id="p_kind" name="kind" class="select">
+      <option value="person" {{ "selected" if form.kind != "group" else "" }}>Человек</option>
+      <option value="group" {{ "selected" if form.kind == "group" else "" }}>Группа (роль Discord)</option>
+    </select>
+  </div>
+  <div>
+    <label class="label" for="p_name">Имя</label>
+    <input id="p_name" name="name" required value="{{ form.name or '' }}" class="input" placeholder="Вася Пупкин / Ops-команда" />
+  </div>
+  <div>
+    <label class="label" for="p_handle">Ник для упоминаний (@…)</label>
+    <input id="p_handle" name="handle" required value="{{ form.handle or '' }}" class="input input-mono" placeholder="vasya" />
+  </div>
+  <div>
+    <label class="label" for="p_discord">Discord ID (пользователя или роли)</label>
+    <input id="p_discord" name="discord_id" value="{{ form.discord_id or '' }}" class="input input-mono" placeholder="123456789012345678" />
+  </div>
+  <div>
+    <label class="label" for="p_tg">Telegram username</label>
+    <input id="p_tg" name="telegram_username" value="{{ form.telegram_username or '' }}" class="input input-mono" placeholder="vasya_ops" />
+  </div>
+  <div>
+    <label class="label" for="p_user">Связать с аккаунтом DomainGuard (опц.)</label>
+    <select id="p_user" name="user_id" class="select">
+      <option value="">— нет —</option>
+      {% for u in users %}
+        {% if u.id not in linked or u.id == form.user_id %}
+        <option value="{{ u.id }}" {{ "selected" if form.user_id == u.id else "" }}>{{ u.login }}</option>
+        {% endif %}
+      {% endfor %}
+    </select>
+  </div>
+  <div class="md:col-span-2">
+    <label class="label" for="p_note">Заметка (роль, зона ответственности)</label>
+    <input id="p_note" name="note" value="{{ form.note or '' }}" class="input" placeholder="финансы / продление доменов" />
+  </div>
+  <div class="md:col-span-2"><button type="submit" class="btn btn-primary">Добавить</button></div>
+</form>
+{% endcall %}
+
+<div id="routes"></div>
+{% call ui.panel("Маршрутизация: кого назначать на новый алерт") %}
+<p class="text-xs muted" style="padding:12px 18px 0">
+  Новый алерт получает ответственного по правилу, и его сразу упоминают в канале. Порядок поиска:
+  <strong>проект → компания → по умолчанию</strong>; точный вид важнее «Любого вида».
+  Если алерт перешёл на более срочный порог (30 → 7 дн.), ответственный сохраняется.
+</p>
+<table class="dg-table">
+  <thead><tr><th>Где</th><th>Вид алерта</th><th>Кому</th><th></th></tr></thead>
+  <tbody>
+    {% for r in routes %}
+    <tr>
+      <td>{{ r.scope_label }}</td>
+      <td>{{ kind_labels.get(r.route.kind, r.route.kind) }}</td>
+      <td>{{ r.person.name }} <span class="font-mono muted">@{{ r.person.handle }}</span>{% if not r.person.is_active %} {{ ui.badge("отключён", "gray") }}{% endif %}</td>
+      <td>
+        <form method="post" action="/people/routes/{{ r.route.id }}/delete" class="inline" onsubmit="return confirm('Удалить правило?');">
+          <button class="btn-link-danger">Удалить</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    {{ ui.empty_row(4, "Правил нет — новые алерты приходят без ответственного.") }}
+    {% endfor %}
+  </tbody>
+</table>
+<form method="post" action="/people/routes" class="flex flex-wrap items-end gap-3" style="padding:16px 18px">
+  <div>
+    <label class="label" for="r_scope">Где действует</label>
+    <select id="r_scope" name="scope" class="select">
+      <option value="global">По умолчанию (все домены)</option>
+      {% for c in companies %}<option value="company:{{ c.id }}">Компания: {{ c.name }}</option>{% endfor %}
+      {% for pr in projects %}<option value="project:{{ pr.id }}">Проект: {{ pr.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="r_kind">Вид алерта</label>
+    <select id="r_kind" name="kind" class="select">
+      {% for k, label in kind_labels.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="label" for="r_person">Назначать</label>
+    <select id="r_person" name="person_id" class="select" required>
+      <option value="">— выберите —</option>
+      {% for p in people if p.is_active %}<option value="{{ p.id }}">{{ p.name }} (@{{ p.handle }})</option>{% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary">Сохранить правило</button>
+</form>
+{% endcall %}
+{% endblock %}

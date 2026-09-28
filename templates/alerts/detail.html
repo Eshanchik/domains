@@ -1,72 +1,272 @@
 {% extends "base.html" %}
 {% import "_components.html" as ui %}
-{% block title %}Алерт · {{ domain.fqdn }} — DomainGuard{% endblock %}
+{% block title %}{{ kind_label }} · {{ domain.fqdn }} — DomainGuard{% endblock %}
 {% block content %}
 {%- set sev = event.severity -%}
 {%- set sev_glyph = {"high": "●", "medium": "◆", "low": "·"}.get(sev, "·") -%}
 {%- set sev_color = {"high": "var(--mag)", "medium": "var(--amber)", "low": "var(--dim)"}.get(sev, "var(--dim)") -%}
+{%- set tone_color = {"ok": "var(--ok)", "warn": "var(--amber)", "bad": "var(--mag)"} -%}
+<style>
+  .kv { display:grid; grid-template-columns: 140px 1fr; row-gap:6px; column-gap:12px; padding:10px 16px; }
+  .kv > .k { color: var(--dim); }
+  .hint { margin: 4px 16px 12px; padding: 8px 12px; border-left: 2px solid var(--acc); background: var(--panel-2); }
+  .tl { padding: 8px 16px; }
+  .tl-row { display:flex; gap:10px; padding:5px 0; border-bottom:1px dashed var(--bd); }
+  .tl-row:last-child { border-bottom:0; }
+  .tl-at { width:120px; flex-shrink:0; color: var(--dim); }
+  .tl-body { white-space: pre-wrap; margin-top:3px; padding:6px 10px; background: var(--panel-2); }
+  .mention { color: var(--cyan); font-weight: 700; }
+  .chip { display:inline-block; padding:1px 6px; margin:2px 4px 2px 0; border:1px solid var(--bd); cursor:pointer; color: var(--cyan); }
+  .chip:hover { background: var(--acc); color: var(--bg); }
+  @media (min-width: 900px) { .alert-grid { display:grid; grid-template-columns: 1.25fr .75fr; gap:14px; } }
+  .alert-grid > div { min-width:0; }
+</style>
 
-<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+{# ---- header ---- #}
+<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 14px;margin-bottom:14px">
   <a href="/alerts" style="color:var(--dim)">‹ ~/alerts</a>
-  <h1 style="margin:0;font-size:16px;color:var(--tx)"><span style="color:{{ sev_color }}">{{ sev_glyph }} {{ sev|upper }}</span> {{ event.kind }}</h1>
+  <h1 style="margin:0;font-size:16px;color:var(--tx)">
+    <span style="color:{{ sev_color }}">{{ sev_glyph }} {{ severity_label | upper }}</span>
+    · {{ kind_label }} ·
+    <a href="/domains/{{ domain.id }}" class="link font-mono" style="color:var(--acc)">{{ domain.fqdn }}</a>
+  </h1>
+  {% if event.state == "active" %}
+    {% if event.acked_at %}{{ ui.badge("В РАБОТЕ", "blue") }}{% else %}{{ ui.badge("АКТИВЕН", "amber") }}{% endif %}
+  {% else %}{{ ui.badge("ЗАКРЫТ", "green") }}{% endif %}
+  <span style="color:var(--dim)">{{ "открыт" if event.state == "active" else "был открыт" }} {{ open_for }}</span>
+  <code style="color:var(--faint)">#{{ event.id }} · {{ event.kind }}</code>
 </div>
 
+{# ---- result of the last action ---- #}
+{% if msg == "assigned" %}
+  <div class="flash flash-success mb-4">Ответственный сохранён{% if sent %}, упоминание отправлено в каналы: {{ sent }}{% endif %}.</div>
+{% elif msg == "acked" %}
+  <div class="flash flash-success mb-4">Алерт взят в работу.</div>
+{% elif msg == "already_acked" %}
+  <div class="flash mb-4">Алерт уже взят в работу{% if acked_by %} ({{ acked_by.login }}){% endif %}.</div>
+{% elif msg == "not_active" %}
+  <div class="flash mb-4">Алерт уже закрыт.</div>
+{% elif msg == "commented" %}
+  {% if sent is none %}<div class="flash flash-success mb-4">Комментарий добавлен.</div>
+  {% elif sent > 0 %}<div class="flash flash-success mb-4">Комментарий добавлен и отправлен в каналы: {{ sent }}.</div>
+  {% else %}<div class="flash mb-4">Комментарий сохранён, но в каналы не ушёл — у домена нет каналов или отправка не удалась (см. «Доставка»).</div>{% endif %}
+{% elif msg == "empty_comment" %}
+  {{ ui.flash("Комментарий пустой.") }}
+{% elif msg == "bad_person" %}
+  {{ ui.flash("Этот человек не найден или отключён.") }}
+{% endif %}
 {% if notified is not none %}
-  {% if notified|int > 0 %}
-  <div class="flash flash-success mb-4">Отправлено в каналы: {{ notified }}.</div>
-  {% else %}
-  <div class="flash mb-4">Нет подходящих каналов для этого домена (проверьте scope/режим).</div>
-  {% endif %}
+  {% if notified|int > 0 %}<div class="flash flash-success mb-4">Отправлено в каналы: {{ notified }}.</div>
+  {% else %}<div class="flash mb-4">Нет подходящих каналов для этого домена (проверьте scope/режим).</div>{% endif %}
 {% endif %}
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="mb-6">
-  {% call ui.panel("EVENT") %}
-  <div style="padding:10px 16px;display:grid;grid-template-columns:120px 1fr;row-gap:6px;column-gap:12px">
-    <span style="color:var(--dim)">Домен</span><a href="/domains/{{ domain.id }}" class="link font-mono" style="color:var(--acc)">{{ domain.fqdn }}</a>
-    <span style="color:var(--dim)">Severity</span><span>{{ ui.status_badge(event.severity) }}</span>
-    <span style="color:var(--dim)">Состояние</span><span>{% if event.state == "active" %}{{ ui.badge("ACTIVE", "amber") }}{% else %}{{ ui.badge("RESOLVED", "green") }}{% endif %}</span>
-    <span style="color:var(--dim)">Сработал</span><span>{{ event.fired_at.strftime('%Y-%m-%d %H:%M') }}</span>
-    <span style="color:var(--dim)">Решён</span><span>{{ event.resolved_at.strftime('%Y-%m-%d %H:%M') if event.resolved_at else '—' }}</span>
-    <span style="color:var(--dim)">Тип</span><span>{{ event.kind }}</span>
-  </div>
-  {% if user.role.value in ("admin", "manager") %}
-  <div style="padding:0 16px 12px" class="flex items-center gap-3">
-    {% if event.state == "active" %}
-    <form method="post" action="/alerts/{{ event.id }}/resolve" onsubmit="return confirm('Отметить алерт как решённый?');">
-      <button type="submit" class="btn btn-primary btn-sm">Резолв</button>
-    </form>
+<div class="alert-grid mb-6">
+  <div>
+    {# ---- what happened ---- #}
+    {% call ui.panel("ЧТО СЛУЧИЛОСЬ") %}
+    <div class="kv">
+      {% for f in details.facts %}
+        <span class="k">{{ f.label }}</span>
+        <span style="{{ 'color:' ~ tone_color[f.tone] if f.tone in tone_color else '' }}">
+          {% if f.href %}<a href="{{ f.href }}" class="link" target="_blank" rel="noopener noreferrer">{{ f.value }}</a>{% else %}{{ f.value }}{% endif %}
+        </span>
+      {% endfor %}
+      <span class="k">Сработал</span><span>{{ fired_label }}</span>
+      {% if resolved_label %}<span class="k">Закрыт</span><span>{{ resolved_label }}{% if resolved_by %} · {{ resolved_by.login }}{% endif %}</span>{% endif %}
+      {% if event.resolution_note %}<span class="k">Причина</span><span>{{ event.resolution_note }}</span>{% endif %}
+    </div>
+    {% if details.hint and event.state == "active" %}
+      <div class="hint"><span style="color:var(--acc)">▸ Что делать:</span> {{ details.hint }}</div>
     {% endif %}
-    <form method="post" action="/alerts/{{ event.id }}/notify">
-      <button type="submit" class="btn btn-secondary btn-sm">Переслать в канал</button>
-    </form>
+    {% for t in details.tables %}
+      <div style="padding:0 16px 4px;color:var(--dim)" class="text-xs">{{ t.title }}</div>
+      <div style="overflow-x:auto">
+      <table class="dg-table">
+        <thead><tr>{% for c in t.columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in t.rows %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table>
+      </div>
+    {% endfor %}
+    {% endcall %}
+  </div>
+
+  <div>
+    {# ---- owner & actions ---- #}
+    {% call ui.panel("ОТВЕТСТВЕННЫЙ") %}
+    <div class="kv">
+      <span class="k">Ответственный</span>
+      <span>
+        {% if assignee %}
+          {{ assignee.name }} <span class="mention">@{{ assignee.handle }}</span>
+          {% if assignee.kind == "group" %} {{ ui.badge("группа", "blue") }}{% endif %}
+          {% if not assignee.is_active %} {{ ui.badge("отключён", "gray") }}{% endif %}
+        {% else %}
+          <span style="color:var(--amber)">не назначен</span>
+          {% if suggested %}<div class="text-xs muted">по правилу было бы: {{ suggested.name }} (@{{ suggested.handle }})</div>{% endif %}
+        {% endif %}
+      </span>
+      <span class="k">Статус</span>
+      <span>
+        {% if event.state != "active" %}закрыт
+        {% elif event.acked_at %}в работе{% if acked_by %} у {{ acked_by.login }}{% endif %} с {{ acked_label }}
+        {% else %}ждёт реакции{% endif %}
+      </span>
+    </div>
+
+    {% if can_act and event.state == "active" %}
+    <div style="padding:0 16px 12px" class="space-y-3">
+      <form method="post" action="/alerts/{{ event.id }}/assign" class="space-y-2">
+        <label class="label" for="assign_person">Назначить</label>
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="assign_person" name="person_id" class="select w-auto">
+            <option value="">— без ответственного —</option>
+            {% for p in people %}
+              <option value="{{ p.id }}" {{ "selected" if assignee and assignee.id == p.id else "" }}>{{ p.name }} (@{{ p.handle }}){{ " · группа" if p.kind == "group" else "" }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-secondary btn-sm">Сохранить</button>
+        </div>
+        <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="notify" value="1" class="checkbox" checked /> упомянуть в канале</label>
+        {% if not people %}<p class="text-xs muted">Справочник людей пуст — {% if user.role.value == "admin" %}<a href="/people" class="link">добавьте людей</a>{% else %}попросите администратора добавить людей{% endif %}.</p>{% endif %}
+      </form>
+
+      <div class="flex flex-wrap items-center gap-2">
+        {% if not event.acked_at %}
+        <form method="post" action="/alerts/{{ event.id }}/ack">
+          <button type="submit" class="btn btn-primary btn-sm">Взял в работу</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/alerts/{{ event.id }}/notify">
+          <button type="submit" class="btn btn-secondary btn-sm" onclick="return confirm('Переслать алерт в каналы домена ещё раз?');">Переслать в канал</button>
+        </form>
+      </div>
+
+      <form method="post" action="/alerts/{{ event.id }}/resolve" class="space-y-2" onsubmit="return confirm('Закрыть алерт?');">
+        <label class="label" for="resolve_note">Закрыть с причиной</label>
+        <input id="resolve_note" name="note" maxlength="500" class="input" placeholder="продлили до 2027 / смена NS ожидаема / ложная тревога" />
+        <button type="submit" class="btn btn-secondary btn-sm">Резолв</button>
+        {% if event.kind in ("expiry", "ssl", "vt_malicious", "ns_change") %}
+        <p class="text-xs muted">Если проблема не устранена, алерт появится снова при следующей проверке.</p>
+        {% endif %}
+      </form>
+    </div>
+    {% endif %}
+    {% endcall %}
+
+    {# ---- domain context ---- #}
+    {% call ui.panel("ДОМЕН") %}
+    <div class="kv">
+      <span class="k">Где</span><span>{{ company.name if company else "—" }} → {{ project.name if project else "—" }}</span>
+      <span class="k">Регистратор</span><span>{{ registrar or "—" }}{% if account %} · {{ account }}{% endif %}</span>
+      <span class="k">Истекает</span><span>{{ domain.expiry_date.strftime('%d.%m.%Y') if domain.expiry_date else "—" }}</span>
+      <span class="k">NS</span><span class="font-mono text-xs">{{ domain.nameservers | join(", ") if domain.nameservers else "—" }}</span>
+      {% if domain.tags %}<span class="k">Теги</span><span>{% for t in domain.tags %}{{ ui.badge(t.name, "blue") }} {% endfor %}</span>{% endif %}
+      {% if domain.notes %}<span class="k">Заметки</span><span style="white-space:pre-wrap">{{ domain.notes }}</span>{% endif %}
+      <span class="k">Другие алерты</span>
+      <span>
+        {% for a in other_alerts %}<a href="/alerts/{{ a.id }}" class="link">{{ a.kind | kind_ru }}</a>{{ ", " if not loop.last }}{% else %}нет{% endfor %}
+      </span>
+    </div>
+    {% endcall %}
+
+    {# ---- delivery ---- #}
+    {% call ui.panel("ДОСТАВКА") %}
+    <div class="kv">
+      <span class="k">Каналы домена</span>
+      <span>{% for ch in channels %}{{ ch.name }} <span class="muted text-xs">({{ ch.type }}, {{ ch.mode }})</span>{{ ", " if not loop.last }}{% else %}<span style="color:var(--mag)">нет — алерты этого домена никуда не уходят</span>{% endfor %}</span>
+    </div>
+    {% if deliveries %}
+    <table class="dg-table">
+      <thead><tr><th>Когда</th><th>Канал</th><th>Статус</th></tr></thead>
+      <tbody>
+        {% for d in deliveries %}
+        <tr>
+          <td>{{ d.log.sent_at.strftime('%d.%m %H:%M') }}</td>
+          <td>{{ d.channel }}</td>
+          <td>{% if d.log.delivery_status == "sent" %}{{ ui.badge("✔ ушло", "green") }}{% else %}{{ ui.badge("✖ ошибка", "red") }} <span class="text-xs muted">{{ (d.log.error or "")[:120] }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% endcall %}
+  </div>
+</div>
+
+{# ---- timeline + comments ---- #}
+{% call ui.panel("ЛЕНТА") %}
+<div class="tl">
+  {% for it in timeline %}
+  <div class="tl-row">
+    <span class="tl-at">{{ it.at_label }}</span>
+    <span style="color:var({{ it.color }});width:14px;flex-shrink:0">{{ it.glyph }}</span>
+    <div style="min-width:0;flex:1">
+      {% if it.actor %}<strong>{{ it.actor }}</strong> · {% endif %}{{ it.text }}
+      {% if it.mentions %}<span class="text-xs muted"> · упомянуты: {{ it.mentions | join(", ") }}</span>{% endif %}
+      {% if it.body %}<div class="tl-body">{{ it.body | mentions_html }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% if can_act %}
+<form method="post" action="/alerts/{{ event.id }}/comment" style="padding:4px 16px 14px" class="space-y-2">
+  <label class="label" for="comment_body">Комментарий</label>
+  <textarea id="comment_body" name="body" rows="3" maxlength="2000" class="input" placeholder="Напишите, что сделано или кто нужен. @ник — упомянуть человека."></textarea>
+  {% if people %}
+  <div class="text-xs muted">Упомянуть:
+    {% for p in people %}<span class="chip" data-handle="{{ p.handle }}" title="{{ p.name }}">@{{ p.handle }}</span>{% endfor %}
   </div>
   {% endif %}
-  {% endcall %}
+  <div class="flex flex-wrap items-center gap-3">
+    <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="to_channel" value="1" class="checkbox" /> отправить в канал с упоминаниями</label>
+    <button type="submit" class="btn btn-primary btn-sm">Отправить</button>
+  </div>
+</form>
+<script>
+  document.querySelectorAll('.chip[data-handle]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var ta = document.getElementById('comment_body');
+      var tag = '@' + chip.dataset.handle + ' ';
+      var pos = ta.selectionStart || ta.value.length;
+      var before = ta.value.slice(0, pos);
+      if (before && !/\s$/.test(before)) tag = ' ' + tag;
+      ta.value = before + tag + ta.value.slice(pos);
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = (before + tag).length;
+    });
+  });
+</script>
+{% endif %}
+{% endcall %}
 
-  {% call ui.panel("PAYLOAD_JSON") %}
+{# ---- recent checks ---- #}
+{% call ui.panel("Последние проверки домена") %}
+<div style="overflow-x:auto">
+<table class="dg-table">
+  <thead><tr><th>Когда</th><th>Тип</th><th>Статус</th><th>Причина</th></tr></thead>
+  <tbody>
+    {% for row in checks %}
+    <tr>
+      <td>{{ row.c.checked_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td>{{ row.c.type }}</td>
+      <td>{{ ui.status_badge(row.c.status) }}</td>
+      <td class="text-xs" style="color:var(--dim)">{{ row.error }}</td>
+    </tr>
+    {% else %}
+    {{ ui.empty_row(4, "Проверок пока нет.") }}
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endcall %}
+
+<details class="mt-4">
+  <summary style="cursor:pointer;color:var(--dim)">Технические данные алерта (payload)</summary>
   {% if event.payload_json %}
   <pre style="margin:0;padding:10px 16px;color:var(--dim);white-space:pre-wrap">{% for key, value in event.payload_json.items() %}<span style="color:var(--cyan)">{{ key }}</span>: <span style="color:var(--ok)">{{ value }}</span>
 {% endfor %}</pre>
   {% else %}
   <p class="text-sm muted" style="padding:10px 16px">Дополнительных данных нет.</p>
   {% endif %}
-  {% endcall %}
-</div>
-
-{% call ui.panel("Последние проверки домена") %}
-<table class="dg-table">
-  <thead><tr><th>Когда</th><th>Тип</th><th>Статус</th></tr></thead>
-  <tbody>
-    {% for c in recent_checks %}
-    <tr>
-      <td>{{ c.checked_at.strftime('%Y-%m-%d %H:%M') }}</td>
-      <td>{{ c.type }}</td>
-      <td>{{ ui.status_badge(c.status) }}</td>
-    </tr>
-    {% else %}
-    {{ ui.empty_row(3, "Проверок пока нет.") }}
-    {% endfor %}
-  </tbody>
-</table>
-{% endcall %}
+</details>
 {% endblock %}

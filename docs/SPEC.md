@@ -180,6 +180,21 @@
 - FR-AL-6. Эскалация — **не делаем** (решение).
 - FR-AL-7. Тестовая отправка в канал из UI; журнал отправок (что/куда/когда/статус).
 - FR-AL-8. Язык всех уведомлений — русский.
+- FR-AL-9. **Ответственные и упоминания (T97).** Справочник «Люди» (`/people`, admin):
+  человек (Discord user ID и/или Telegram @username, опционально связан с аккаунтом
+  DomainGuard) или группа (роль Discord, напр. @ops); логин в систему не нужен.
+  Правила маршрутизации «вид алерта → кто» на уровнях проект → компания → по умолчанию
+  (точный вид важнее «любого»). Новый алерт получает ответственного по правилу; при
+  переходе на более срочный порог ответственный сохраняется. Мгновенное сообщение
+  упоминает ответственного (Discord `<@id>`/`<@&id>`, Telegram `@username`) и ссылается
+  на карточку алерта; дайджест упоминает ответственных в шапке. Discord пингует только
+  явно упомянутых (`allowed_mentions`), `@everyone`/`@here` из текста не срабатывают.
+- FR-AL-10. **Карточка алерта (T97)**: «что случилось» по виду (даты, автопродление,
+  регистратор/аккаунт, цена; сертификаты по хостам; детекты VT; результаты
+  health-check; диф NS) + подсказка «что делать»; ответственный, «Взял в работу»,
+  закрытие с причиной; лента (сработал, доставлен, назначен, взят, комментарии,
+  закрыт); комментарии с @упоминаниями, по галочке — в канал с пингом; журнал доставки.
+  Действия — Manager+ в пределах скоупа.
 
 ### 3.7. Дашборд (все тексты UI — русские)
 - FR-UI-1. Обзор: всего доменов; истекает в 7/30/90 дней; проблемы SSL;
@@ -247,7 +262,15 @@ NotificationChannel(id, type['telegram'|...], name, config_enc,
 AlertRule(id, scope[global|company|project|domain], scope_id?, condition_type,
           threshold, severity, is_enabled)
 AlertEvent(id, rule_id?, domain_id, kind, dedupe_key UNIQUE(active), severity,
-           fired_at, resolved_at?, state[active|resolved], payload_json)
+           fired_at, resolved_at?, state[active|resolved], payload_json,
+           notified_at?, assignee_person_id?, acked_at?, acked_by_id?,
+           resolved_by_id?, resolution_note?)
+AlertActivity(id, alert_event_id, at, actor_user_id?, kind[notified|digest|assigned|
+              acked|comment|resolved], body?, data_json?)   -- лента алерта (T97)
+Person(id, kind[person|group], name, handle UNIQUE, discord_id?, telegram_username?,
+       user_id? UNIQUE, note?, is_active)                -- справочник «Люди» (T97)
+AlertRoute(id, company_id?, project_id?, kind|'*', person_id)
+           UNIQUE(coalesce(company_id,0), coalesce(project_id,0), kind)
 NotificationLog(id, alert_event_id?, digest_id?, channel_id, sent_at,
                 delivery_status, error?)
 AuditLog(id, actor_id, action, entity_type, entity_id, diff_json, at)

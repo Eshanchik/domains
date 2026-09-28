@@ -34,7 +34,10 @@ def test_chunk_message_hard_splits_overlong_line() -> None:
 
 def test_payload_shapes() -> None:
     assert SlackChannel(URL)._payload("x") == {"text": "x"}
-    assert DiscordChannel(URL)._payload("x") == {"content": "x"}
+    assert DiscordChannel(URL)._payload("x") == {
+        "content": "x",
+        "allowed_mentions": {"parse": [], "users": [], "roles": []},
+    }
     assert GenericWebhookChannel(URL)._payload("x") == {"text": "x"}
 
 

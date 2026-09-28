@@ -129,6 +129,6 @@ async def channel_send_now(
             if ok:
                 from app.services.alerts import mark_events_notified
 
-                await mark_events_notified(session, digest.event_ids)
+                await mark_events_notified(session, digest.event_ids, channel=channel)
             result = "ok" if ok else "fail"
     return RedirectResponse(f"/channels?sent={result}", status_code=status.HTTP_303_SEE_OTHER)
