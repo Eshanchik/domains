@@ -242,6 +242,39 @@ async def send_to_channel(
         return False
 
 
+async def send_alert_to_channel(
+    session: AsyncSession,
+    redis: aioredis.Redis,  # noqa: ARG001 — reserved for a per-bot send limiter
+    channel: NotificationChannel,
+    event: object,
+    domain: Domain,
+    *,
+    client=None,
+) -> bool:
+    """Send an instant alert as a rich message native to the channel (Discord embed,
+    Telegram HTML, plain elsewhere), with retry, logged against the alert."""
+    from app.services.alert_message import compose
+
+    impl = await _build_impl(session, channel, client=client)
+    if impl is None:
+        _log_delivery(session, channel.id, event.id, "failed", "not configured")
+        await session.commit()
+        return False
+    message = await compose(session, event, domain, channel_type=channel.type)
+    try:
+        await with_retry(
+            lambda: impl.send_alert(message), retries=3, exceptions=(ChannelTransientError,)
+        )
+        _log_delivery(session, channel.id, event.id, "sent", None)
+        await session.commit()
+        return True
+    except (RetryError, ChannelError) as exc:
+        log.warning("channel %s alert delivery failed: %s", channel.id, exc)
+        _log_delivery(session, channel.id, event.id, "failed", str(exc))
+        await session.commit()
+        return False
+
+
 async def send_digest_to_channel(
     session: AsyncSession,
     redis: aioredis.Redis,  # noqa: ARG001 — reserved for a per-bot send limiter

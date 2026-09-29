@@ -295,20 +295,9 @@ async def alert_notify(
     sent = 0
     if found is not None:
         event, domain = found
-        project, company = await alerts_svc.domain_location(session, domain)
-        account = await alerts_svc.account_label(session, domain)
-        owner = await workflow.active_owner(session, event)
         for channel in await notif.resolve_channels(session, domain, purpose="instant"):
-            text = alerts_svc.build_message(
-                event,
-                domain,
-                project=project,
-                company=company,
-                account=account,
-                mention=people_svc.mention(owner, channel.type) or None,
-                url=workflow.alert_url(event.id),
-            )
-            if await notif.send_to_channel(session, redis, channel, text, alert_event_id=event.id):
+            # Same rich card as the instant alert (embed / HTML), logged on the alert.
+            if await notif.send_alert_to_channel(session, redis, channel, event, domain):
                 sent += 1
     return RedirectResponse(
         f"/alerts/{alert_id}?notified={sent}", status_code=status.HTTP_303_SEE_OTHER

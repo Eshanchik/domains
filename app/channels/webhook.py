@@ -51,6 +51,12 @@ class SlackChannel(_WebhookChannel):
     def _payload(self, text: str) -> dict:
         return {"text": text}
 
+    async def send_alert(self, message: object) -> None:
+        from app.services.alert_message import render_plain
+        from app.services.people import slack_escape
+
+        await self.send(slack_escape(render_plain(message)))  # no <!channel> from data
+
 
 _DISCORD_USER = re.compile(r"<@!?(\d{15,22})>")
 _DISCORD_ROLE = re.compile(r"<@&(\d{15,22})>")
@@ -80,6 +86,14 @@ class DiscordChannel(_WebhookChannel):
         for body in render_discord(digest):
             body["allowed_mentions"] = discord_allowed_mentions(body.get("content", ""))
             await self._post(body)
+
+    async def send_alert(self, message: object) -> None:
+        """The instant alert as an embed card (colored by severity, linked title)."""
+        from app.services.alert_message import render_discord as render_alert
+
+        body = render_alert(message)
+        body["allowed_mentions"] = discord_allowed_mentions(body.get("content", ""))
+        await self._post(body)
 
 
 class GenericWebhookChannel(_WebhookChannel):

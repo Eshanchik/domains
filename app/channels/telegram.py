@@ -35,6 +35,13 @@ class TelegramChannel(NotificationChannel):
         for chunk in chunk_message(render_telegram_html(digest), self.MAX_LEN):
             await self._send_one(chunk, parse_mode="HTML")
 
+    async def send_alert(self, message: object) -> None:
+        """The instant alert as Telegram HTML (bold headline, linked domain)."""
+        from app.services.alert_message import render_telegram
+
+        for chunk in chunk_message(render_telegram(message), self.MAX_LEN):
+            await self._send_one(chunk, parse_mode="HTML")
+
     async def _send_one(self, text: str, parse_mode: str | None = None) -> None:
         body = {"chat_id": self._chat_id, "text": text, "disable_web_page_preview": True}
         if parse_mode:
