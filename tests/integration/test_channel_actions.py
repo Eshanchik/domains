@@ -110,20 +110,15 @@ def test_alert_notify_sends_to_channels(
     aid = _make_alert(dom, kind="expiry", severity="high")
     _make_channel(is_default=True, mode="instant")
 
-    sent: list[str] = []
-    logged_for: list[int | None] = []
+    sent: list[tuple[str, int, str]] = []
 
-    async def fake_send(session, redis, channel, text, alert_event_id=None):
-        sent.append(text)
-        logged_for.append(alert_event_id)
+    async def fake_send_alert(session, redis, channel, event, domain, **kw):
+        sent.append((channel.name, event.id, domain.fqdn))
         return True
 
-    monkeypatch.setattr(notif, "send_to_channel", fake_send)
+    monkeypatch.setattr(notif, "send_alert_to_channel", fake_send_alert)
     resp = client.post(f"/alerts/{aid}/notify", follow_redirects=False)
     assert resp.status_code == 303
     assert resp.headers["location"] == f"/alerts/{aid}?notified=1"
-    assert sent and "al.com" in sent[0]
-    # T97: the resend is logged against the alert (shows in the card's «Доставка»)
-    # and links back to the card.
-    assert logged_for == [aid]
-    assert f"/alerts/{aid}" in sent[0]
+    # T101: the resend is the same rich card as the instant alert, for this alert.
+    assert sent and sent[0][1] == aid and sent[0][2] == "al.com"

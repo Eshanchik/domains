@@ -69,6 +69,13 @@ class NotificationChannel(ABC):
 
         await self.send(render_plain(digest))
 
+    async def send_alert(self, message: object) -> None:
+        """Deliver a rich instant alert (``alert_message.AlertMessage``). The default is
+        the plain layout; Discord (embed card) and Telegram (HTML) override this."""
+        from app.services.alert_message import render_plain
+
+        await self.send(render_plain(message))
+
     @abstractmethod
     async def _send_one(self, text: str) -> None:
         """Deliver a single already-size-bounded message."""

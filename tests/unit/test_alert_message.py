@@ -77,3 +77,18 @@ def test_account_shown_in_message():
     # Account also renders without project/company context.
     msg2 = build_message(_event("ssl", payload={"days": 3}), _domain(), account="Olympia")
     assert "🏷 Olympia" in msg2
+
+
+def test_expired_domain_never_says_minus_days():
+    msg = build_message(_event("expiry", payload={"days": -43, "threshold": 1}), _domain())
+    assert "просрочен 43 дн." in msg and "-43" not in msg
+
+
+def test_location_shown_once_when_project_equals_company():
+    msg = build_message(
+        _event("expiry", payload={"days": 5, "threshold": 7}),
+        _domain(),
+        project="Adera",
+        company="Adera",
+    )
+    assert "📁 Adera" in msg and "Adera · Adera" not in msg

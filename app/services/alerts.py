@@ -346,7 +346,12 @@ def _build_body(
     sev = _SEV_LABEL.get(event.severity, event.severity.upper())
     loc = ""
     if project:
-        loc = f"\n📁 {project} · {company}"
+        # «Adera · Adera» says nothing twice — show the name once when they match.
+        loc = (
+            f"\n📁 {project}"
+            if project == company or not company
+            else f"\n📁 {project} · {company}"
+        )
         if account:
             loc += f"\n🏷 {account}"
     elif account:
@@ -354,6 +359,12 @@ def _build_body(
 
     if event.kind == "expiry":
         date = domain.expiry_date.strftime("%Y-%m-%d") if domain.expiry_date else "—"
+        if isinstance(days, int) and days < 0:  # never «через -43 дн.»
+            return (
+                f"{sev} · просрочен домен\n"
+                f"🌐 {fqdn}\n"
+                f"⏳ просрочен {-days} дн. — {date}  (порог ≤{threshold} дн.){loc}"
+            )
         return (
             f"{sev} · истекает домен\n"
             f"🌐 {fqdn}\n"

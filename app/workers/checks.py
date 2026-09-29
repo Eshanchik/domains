@@ -129,10 +129,22 @@ async def _send_notification(channel_id: int, text: str, alert_event_id: int | N
             from app.services import notifications as notif
 
             channel = await notif.get_channel(session, channel_id)
-            if channel is not None:
-                await notif.send_to_channel(
-                    session, redis, channel, text, alert_event_id=alert_event_id
-                )
+            if channel is None:
+                return
+            if alert_event_id is not None:
+                # Instant alert: composed now as a rich card native to the channel
+                # (Discord embed / Telegram HTML); ``text`` is only the fallback.
+                from app.models.alert import AlertEvent
+                from app.models.domain import Domain
+
+                event = await session.get(AlertEvent, alert_event_id)
+                domain = await session.get(Domain, event.domain_id) if event else None
+                if event is not None and domain is not None:
+                    await notif.send_alert_to_channel(session, redis, channel, event, domain)
+                    return
+            await notif.send_to_channel(
+                session, redis, channel, text, alert_event_id=alert_event_id
+            )
     finally:
         await redis.aclose()
 

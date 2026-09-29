@@ -740,8 +740,16 @@ def _check_error(c: CheckResult) -> str:
     return ""
 
 
-async def build_card(session: AsyncSession, event: AlertEvent, domain: Domain) -> dict[str, Any]:
-    """Everything the alert card renders, in one place (keeps the route thin)."""
+@dataclass
+class DomainContext:
+    project: Project | None
+    company: Company | None
+    registrar: str | None
+    account: str | None
+
+
+async def domain_context(session: AsyncSession, domain: Domain) -> DomainContext:
+    """Company/project and registrar/account of a domain (shared by card and message)."""
     project = await session.get(Project, domain.project_id)
     company = await session.get(Company, project.company_id) if project is not None else None
     registrar = (
@@ -762,19 +770,31 @@ async def build_card(session: AsyncSession, event: AlertEvent, domain: Domain) -
             .join(RegistrarAccount, RegistrarAccount.registrar_id == Registrar.id)
             .where(RegistrarAccount.id == domain.registrar_account_id)
         )
+    return DomainContext(project, company, registrar, account)
 
+
+async def alert_details(
+    session: AsyncSession, event: AlertEvent, domain: Domain, ctx: DomainContext
+) -> CardDetails:
+    """«Что случилось» facts + «что делать» hint for an alert, per kind."""
     if event.kind == "expiry":
-        details = await _expiry_details(session, event, domain, registrar, account)
-    elif event.kind == "ssl":
-        details = await _ssl_details(session, event, domain)
-    elif event.kind == "vt_malicious":
-        details = await _vt_details(session, event, domain)
-    elif event.kind == "health_down":
-        details = await _health_details(session, event, domain)
-    elif event.kind == "ns_change":
-        details = _ns_details(event)
-    else:
-        details = CardDetails([], "")
+        return await _expiry_details(session, event, domain, ctx.registrar, ctx.account)
+    if event.kind == "ssl":
+        return await _ssl_details(session, event, domain)
+    if event.kind == "vt_malicious":
+        return await _vt_details(session, event, domain)
+    if event.kind == "health_down":
+        return await _health_details(session, event, domain)
+    if event.kind == "ns_change":
+        return _ns_details(event)
+    return CardDetails([], "")
+
+
+async def build_card(session: AsyncSession, event: AlertEvent, domain: Domain) -> dict[str, Any]:
+    """Everything the alert card renders, in one place (keeps the route thin)."""
+    ctx = await domain_context(session, domain)
+    project, company, registrar, account = ctx.project, ctx.company, ctx.registrar, ctx.account
+    details = await alert_details(session, event, domain, ctx)
 
     assignee = (
         await session.get(Person, event.assignee_person_id)
